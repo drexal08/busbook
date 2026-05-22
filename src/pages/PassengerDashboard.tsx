@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+import { getPassengerBookings } from '../lib/bookings';
 import { IconSearch, IconArrowRight, IconCalendar, IconClock, IconSeat, IconTicket, IconEye } from '../components/Icons';
 
 const PassengerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { getPassengerBookings } = useData();
-  if (!isAuthenticated || !user) { navigate('/login'); return null; }
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const bookings = getPassengerBookings(user.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  useEffect(() => {
+    if (!isAuthenticated || !user) { navigate('/login'); return; }
+    getPassengerBookings(user.id)
+      .then(data => setBookings(data.sort((a: any, b: any) => new Date(b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt).getTime() - new Date(a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt).getTime())))
+      .finally(() => setLoading(false));
+  }, [user, isAuthenticated]);
+
+  if (!isAuthenticated || !user) return null;
 
   const statusBadge: Record<string, string> = {
     confirmed: 'bg-emerald-50 text-emerald-600 border-emerald-100',
@@ -41,7 +48,12 @@ const PassengerDashboard: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h2 className="text-sm font-bold text-gray-900 mb-4">My bookings <span className="text-gray-300 font-normal">({bookings.length})</span></h2>
-        {bookings.length === 0 ? (
+
+        {loading ? (
+          <div className="text-center py-20">
+            <div className="w-8 h-8 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : bookings.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-xl border border-border">
             <div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3"><IconTicket size={24} className="text-gray-300" /></div>
             <h3 className="font-semibold text-gray-700 text-sm mb-1">No bookings yet</h3>

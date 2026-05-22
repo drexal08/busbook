@@ -20,28 +20,28 @@ const SignupPage: React.FC = () => {
   const { addCompanyWithId } = useData();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(''); setSuccess('');
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
-    if (role === 'company' && !companyName.trim()) { setError('Company name is required'); return; }
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError(''); setSuccess('');
+  if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+  if (role === 'company' && !companyName.trim()) { setError('Company name is required'); return; }
 
-    if (role === 'company') {
-      const companyId = `comp-${Date.now()}`;
-      const result = signup(name, email, password, phone, role, companyId);
-      if (result.success && result.userId) {
-        addCompanyWithId({ id: companyId, name: companyName, ownerId: result.userId, description: companyDescription || 'New bus company', status: 'pending', phone, email, createdAt: new Date().toISOString().split('T')[0] });
-        updateUserCompanyId(result.userId, companyId);
-        setSuccess('Registration submitted! Admin approval is required before you can operate.');
-        setTimeout(() => navigate('/login'), 3000);
-      } else setError(result.error || 'Registration failed');
-      return;
-    }
+  if (role === 'company') {
+    const companyId = `comp-${Date.now()}`;
+    const result = await signup(name, email, password, phone, role, companyId);
+    if (result.success && result.userId) {
+      addCompanyWithId({ id: companyId, name: companyName, ownerId: result.userId, description: companyDescription || 'New bus company', status: 'pending', phone, email, createdAt: new Date().toISOString().split('T')[0] });
+      await updateUserCompanyId(result.userId, companyId);
+      setSuccess('Registration submitted! Admin approval is required before you can operate.');
+      setTimeout(() => navigate('/login'), 3000);
+    } else setError(result.error || 'Registration failed');
+    return;
+  }
 
-    const result = signup(name, email, password, phone, role);
-    if (result.success) navigate('/');
-    else setError(result.error || 'Signup failed');
-  };
+  const result = await signup(name, email, password, phone, role);
+  if (result.success) navigate('/');
+  else setError(result.error || 'Signup failed');
+};
 
   const roles: { value: UserRole; label: string; desc: string; icon: React.ReactNode }[] = [
     { value: 'passenger', label: 'Passenger', desc: 'Book tickets', icon: <IconUser size={18} /> },
