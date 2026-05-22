@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { useData } from '../contexts/DataContext';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconXCircle, IconTicket } from '../components/Icons';
 import { LogoFull } from '../components/Logo';
 import { ImigongoCorner, ImigongoDivider } from '../components/Imigongo';
@@ -9,8 +10,23 @@ import { ImigongoCorner, ImigongoDivider } from '../components/Imigongo';
 const TicketPage: React.FC = () => {
   const { bookingId } = useParams<{ bookingId: string }>();
   const navigate = useNavigate();
-  const { bookings } = useData();
-  const booking = bookings.find(b => b.id === bookingId);
+  const [booking, setBooking] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!bookingId) return;
+    getDoc(doc(db, 'bookings', bookingId))
+      .then(snap => {
+        if (snap.exists()) setBooking({ id: snap.id, ...snap.data() });
+      })
+      .finally(() => setLoading(false));
+  }, [bookingId]);
+
+  if (loading) return (
+    <div className="min-h-[calc(100vh-60px)] flex items-center justify-center">
+      <div className="w-8 h-8 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   if (!booking) return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
@@ -37,13 +53,10 @@ const TicketPage: React.FC = () => {
         </button>
 
         <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden relative">
-          {/* Imigongo corner accents — cultural identity on the boarding pass */}
           <ImigongoCorner position="top-left" size={50} color="#1c3f94" opacity={0.12} />
           <ImigongoCorner position="top-right" size={50} color="#1c3f94" opacity={0.12} />
 
-          {/* Header */}
           <div className="bg-primary-800 px-6 py-5 flex flex-col items-center relative overflow-hidden">
-            {/* Subtle Imigongo texture in header */}
             <div className="absolute inset-0 pointer-events-none opacity-[0.04]">
               <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
                 <defs>
@@ -61,7 +74,6 @@ const TicketPage: React.FC = () => {
             <p className="text-primary-300 text-[11px] font-medium mt-2 relative z-10">E-Ticket · Boarding Pass</p>
           </div>
 
-          {/* Status badge */}
           <div className="flex justify-center -mt-3 relative z-10">
             <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold border ${s.bg} ${s.text} ${s.border}`}>
               {s.icon} {s.label}
@@ -69,7 +81,6 @@ const TicketPage: React.FC = () => {
           </div>
 
           <div className="p-6">
-            {/* Route */}
             <div className="flex items-center justify-between mb-6">
               <div className="text-center flex-1">
                 <div className="text-xl font-extrabold text-gray-900">{booking.origin.split(' ')[0].substring(0, 3).toUpperCase()}</div>
@@ -88,7 +99,6 @@ const TicketPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Details grid */}
             <div className="grid grid-cols-2 gap-2.5 mb-6">
               {[
                 { label: 'Date', value: new Date(booking.departureDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
@@ -105,11 +115,10 @@ const TicketPage: React.FC = () => {
               ))}
             </div>
 
-            {/* QR Code */}
             <div className="text-center mb-4">
               <div className="bg-white border border-border rounded-xl p-5 inline-block">
                 <QRCodeSVG
-                  value={JSON.stringify({ id: booking.id, qr: booking.qrCode, passenger: booking.passengerName, route: `${booking.origin} → ${booking.destination}`, date: booking.departureDate, time: booking.departureTime, seat: booking.seatNumber, status: booking.status })}
+                  value={booking.qrCode || booking.id}
                   size={160} level="M" includeMargin={false}
                 />
               </div>
@@ -117,14 +126,11 @@ const TicketPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Imigongo bottom corners */}
           <ImigongoCorner position="bottom-left" size={40} color="#1c3f94" opacity={0.08} />
           <ImigongoCorner position="bottom-right" size={40} color="#1c3f94" opacity={0.08} />
-
-          {/* Imigongo divider above footer */}
           <ImigongoDivider color="#1c3f94" opacity={0.05} />
           <div className="px-6 py-3 text-center">
-            <p className="text-[10px] text-gray-400">BusBook Rwanda · {booking.id} · Issued {new Date(booking.createdAt).toLocaleDateString()}</p>
+            <p className="text-[10px] text-gray-400">BusBook Rwanda · {booking.id} · Issued {new Date(booking.createdAt?.seconds ? booking.createdAt.seconds * 1000 : booking.createdAt).toLocaleDateString()}</p>
           </div>
         </div>
       </div>
