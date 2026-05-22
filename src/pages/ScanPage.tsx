@@ -19,19 +19,54 @@ export default function ScanPage() {
       async (decodedText) => {
         await scanner.stop();
         setScanning(false);
-        setBookingId(decodedText);
-        await validate(decodedText);
+        
+        // Extract the ID and process it
+        await extractAndValidateId(decodedText);
       },
       () => {}
     );
   }
 
+  // Extracts just the ID from the QR text block and validates it
+  async function extractAndValidateId(scannedText: string) {
+    let extractedId = scannedText.trim();
+
+    // Scenario A: If the QR code is a JSON string block
+    if (extractedId.startsWith('{') && extractedId.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(extractedId);
+        if (parsed.id) {
+          extractedId = parsed.id;
+        }
+      } catch (e) {
+        // Fallback if parsing fails
+      }
+    } 
+    // Scenario B: If it's a URL or text string containing an ID parameter (e.g., id=12345)
+    else {
+      const idMatch = extractedId.match(/(?:id|bookingId)["规律 text='":\s]+([a-zA-Z0-9-]+)/i) || 
+                      extractedId.match(/id=([a-zA-Z0-9-]+)/i);
+      if (idMatch && idMatch[1]) {
+        extractedId = idMatch[1];
+      }
+    }
+
+    // 1. Paste ONLY the extracted clean ID into the text box input
+    setBookingId(extractedId);
+
+    // 2. Trigger the database check immediately with that clean ID
+    await validate(extractedId);
+  }
+
+  // Handles checking the ID against the database
   async function validate(id: string) {
-    if (!id.trim()) return;
+    const cleanId = id.trim();
+    if (!cleanId) return;
+
     setLoading(true);
     setResult(null);
     try {
-      const res = await validateBooking(id.trim());
+      const res = await validateBooking(cleanId);
       setResult(res);
     } catch {
       setResult({ valid: false, message: 'Error validating ticket' });
@@ -85,10 +120,14 @@ export default function ScanPage() {
             <p className="text-2xl mb-2">{result.valid ? '✅' : '❌'}</p>
             {result.valid && result.booking ? (
               <>
-                <p className="font-bold">{result.booking.passengerName}</p>
-                <p>{result.booking.origin} → {result.booking.destination}</p>
-                <p>{result.booking.departureDate} at {result.booking.departureTime}</p>
-                <p>Seat {result.booking.seatNumber}</p>
+                <p className="font-bold text-lg">{result.booking.passengerName || 'Unknown Passenger'}</p>
+                <p className="text-sm mt-1">
+                  {result.booking.origin || 'N/A'} → {result.booking.destination || 'N/A'}
+                </p>
+                <p className="text-sm">
+                  {result.booking.departureDate || ''} {result.booking.departureTime ? `at ${result.booking.departureTime}` : ''}
+                </p>
+                <p className="font-semibold text-blue-600 mt-1">Seat: {result.booking.seatNumber || 'N/A'}</p>
               </>
             ) : (
               <p className="font-semibold">{result.message}</p>
