@@ -52,15 +52,33 @@ const BookingPage: React.FC = () => {
     );
   }
 
-  const handleBooking = () => {
-    if (!selectedSeat || !user) return;
-    setStep('processing');
-    setTimeout(() => {
-      const b = createBooking({ tripId: trip.id, passengerId: user.id, companyId: trip.companyId, seatNumber: selectedSeat, passengerName: user.name, passengerPhone: user.phone, origin: route.origin, destination: route.destination, departureDate: trip.date, departureTime: trip.departureTime, price: trip.price, status: 'confirmed', qrCode: `BK-${Date.now()}-QR-${Math.random().toString(36).substring(2, 8).toUpperCase()}` });
-      setBookingId(b.id);
-      setStep('success');
-    }, 2000);
-  };
+  const handleBooking = async () => {
+  if (!selectedSeat || !user) return;
+  setStep('processing');
+  try {
+    const b = await createBooking({
+      tripId: trip.id,
+      passengerId: user.id,
+      companyId: trip.companyId,
+      seatNumber: selectedSeat,
+      passengerName: user.name,
+      passengerPhone: user.phone,
+      origin: route.origin,
+      destination: route.destination,
+      departureDate: trip.date,
+      departureTime: trip.departureTime,
+      price: trip.price,
+      status: 'confirmed',
+      qrCode: ''
+    });
+    setBookingId(b.id);
+    setStep('success');
+  } catch (e) {
+    console.error(e);
+    setStep('seat');
+    alert('Booking failed. Please try again.');
+  }
+};
 
   if (step === 'success') return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center px-4">

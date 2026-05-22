@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { Company, Trip, Booking, Route, Bus } from '../types';
 import { mockCompanies, mockTrips, mockBookings, mockRoutes, mockBuses } from '../data/mockData';
-
+import { createBooking as fbCreateBooking } from '../lib/bookings';
 interface DataContextType {
   companies: Company[];
   trips: Trip[];
@@ -9,7 +9,7 @@ interface DataContextType {
   routes: Route[];
   buses: Bus[];
   searchTrips: (origin: string, destination: string, date: string) => Trip[];
-  createBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Booking;
+  createBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
   cancelBooking: (bookingId: string) => void;
   approveCompany: (companyId: string) => void;
   rejectCompany: (companyId: string) => void;
@@ -50,29 +50,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [trips, routes, companies]);
 
-  const createBooking = useCallback((bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
-    const id = `BK-${String(bookings.length + 1).padStart(3, '0')}`;
-    const booking: Booking = {
-      ...bookingData,
-      id,
-      createdAt: new Date().toISOString()
-    };
-    setBookings(prev => [...prev, booking]);
-    
-    // Update trip available seats
-    setTrips(prev => prev.map(t => {
-      if (t.id === booking.tripId) {
-        return {
-          ...t,
-          bookedSeats: [...t.bookedSeats, booking.seatNumber],
-          availableSeats: t.availableSeats - 1
-        };
-      }
-      return t;
-    }));
-    
-    return booking;
-  }, [bookings.length]);
+
+const createBooking = useCallback(async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
+  const bookingId = await fbCreateBooking(bookingData);
+  const booking: Booking = {
+    ...bookingData,
+    id: bookingId,
+    qrCode: bookingId,
+    createdAt: new Date().toISOString()
+  };
+  setBookings(prev => [...prev, booking]);
+  setTrips(prev => prev.map(t => {
+    if (t.id === booking.tripId) {
+      return {
+        ...t,
+        bookedSeats: [...t.bookedSeats, booking.seatNumber],
+        availableSeats: t.availableSeats - 1
+      };
+    }
+    return t;
+  }));
+  return booking;
+}, []);
 
   const cancelBooking = useCallback((bookingId: string) => {
     const booking = bookings.find(b => b.id === bookingId);

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
+import ScanPage from './pages/ScanPage';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -33,6 +34,7 @@ const App: React.FC = () => {
               <Route path="/company" element={<CompanyDashboard />} />
               <Route path="/operator" element={<OperatorDashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/scan" element={<ScanPage />} />
               <Route path="*" element={
                 <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
                   <div className="text-center slide-up">
