@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { login as fbLogin, logout as fbLogout, register as fbRegister } from '../lib/auth';
 import { User, UserRole } from '../types';
+
+// HARDCODED ADMIN ACCOUNT CREDENTIALS
+const ADMIN_EMAIL = "byiringirinnocent8@gmail.com";
+const ADMIN_NAME = "Byiringiro Innocent";
+const ADMIN_PHONE = "0796415099";
 
 interface AuthContextType {
   user: User | null;
@@ -22,8 +27,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (snap.exists()) setUser(snap.data() as User);
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const snap = await getDoc(userRef);
+        
+        if (snap.exists()) {
+          let userData = snap.data() as User;
+          
+          // If you log in and your role in Firestore isn't 'admin' yet, update and save it!
+          if (firebaseUser.email === ADMIN_EMAIL && userData.role !== 'admin') {
+            await updateDoc(userRef, { role: 'admin', name: ADMIN_NAME, phone: ADMIN_PHONE });
+            userData.role = 'admin';
+            userData.name = ADMIN_NAME;
+            userData.phone = ADMIN_PHONE;
+          }
+          
+          setUser(userData);
+        } else {
+          // Fallback: Fixed TypeScript error by type casting the object layout cleanly
+          if (firebaseUser.email === ADMIN_EMAIL) {
+            const newAdminDoc = {
+              id: firebaseUser.uid,
+              name: ADMIN_NAME,
+              email: ADMIN_EMAIL,
+              phone: ADMIN_PHONE,
+              role: 'admin' as UserRole,
+              password: '', // Provided fallback to satisfy User type constraints
+              createdAt: new Date().toISOString() // Provided fallback to satisfy User type constraints
+            } as User;
+
+            await setDoc(userRef, newAdminDoc);
+            setUser(newAdminDoc);
+          } else {
+            setUser(null);
+          }
+        }
       } else {
         setUser(null);
       }
@@ -34,7 +71,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (email: string, password: string) => {
     try {
       const { profile } = await fbLogin(email, password);
-      setUser(profile as User);
+      let updatedProfile = { ...profile } as User;
+      
+      // Forces a persistent database document upgrade upon explicit login submission
+      if (email === ADMIN_EMAIL && updatedProfile.role !== 'admin') {
+        const userRef = doc(db, 'users', updatedProfile.id);
+        await updateDoc(userRef, { role: 'admin', name: ADMIN_NAME, phone: ADMIN_PHONE });
+        updatedProfile.role = 'admin';
+        updatedProfile.name = ADMIN_NAME;
+        updatedProfile.phone = ADMIN_PHONE;
+      }
+      
+      setUser(updatedProfile);
       return { success: true };
     } catch {
       return { success: false, error: 'Invalid email or password' };

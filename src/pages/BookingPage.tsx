@@ -20,23 +20,103 @@ const BookingPage: React.FC = () => {
   const company = trip ? getCompanyName(trip.companyId) : '';
   const bus = trip ? getBusInfo(trip.busId) : undefined;
 
-  const rows = useMemo(() => {
+  // DYNAMIC SEAT MAP ENGINE: Automatically configures structure based on any total capacity
+  const layoutRows = useMemo(() => {
     if (!bus || !trip) return [];
-    const r: { number: number; booked: boolean }[][] = [];
-    for (let i = 1; i <= bus.totalSeats; i++) {
-      const rowIdx = Math.floor((i - 1) / 4);
-      if (!r[rowIdx]) r[rowIdx] = [];
-      r[rowIdx].push({ number: i, booked: trip.bookedSeats.includes(i) });
+    
+    const N = bus.totalSeats;
+    const remainder = N % 4;
+    const fullRowsCount = Math.floor(N / 4);
+    const matrix: Array<Array<{
+      id: string;
+      number?: number;
+      label: string;
+      type: 'passenger' | 'foldable' | 'driver' | 'empty';
+      booked: boolean;
+    }>> = [];
+    
+    let currentSeatNum = 1;
+    
+    // 1. FRONT ROW: Driver on the right, remainder passenger seats fill on the left
+    const frontRow = [
+      {
+        id: 'front-l1',
+        number: remainder >= 1 ? currentSeatNum : undefined,
+        label: remainder >= 1 ? String(currentSeatNum++) : '',
+        type: remainder >= 1 ? ('passenger' as const) : ('empty' as const),
+        booked: remainder >= 1 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      },
+      {
+        id: 'front-l2',
+        number: remainder >= 2 ? currentSeatNum : undefined,
+        label: remainder >= 2 ? String(currentSeatNum++) : '',
+        type: remainder >= 2 ? ('passenger' as const) : ('empty' as const),
+        booked: remainder >= 2 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      },
+      {
+        id: 'front-m',
+        number: remainder >= 3 ? currentSeatNum : undefined,
+        label: remainder >= 3 ? String(currentSeatNum++) : '',
+        type: remainder >= 3 ? ('passenger' as const) : ('empty' as const),
+        booked: remainder >= 3 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      },
+      {
+        id: 'driver-slot',
+        label: 'Drv',
+        type: 'driver' as const,
+        booked: false
+      }
+    ];
+    matrix.push(frontRow);
+    
+    // 2. BACK ROWS: Rows of 4 (2 left, 1 foldable middle, 1 extreme right)
+    for (let r = 0; r < fullRowsCount; r++) {
+      const rowSeats = [
+        {
+          id: `row-${r}-l1`,
+          number: currentSeatNum,
+          label: String(currentSeatNum++),
+          type: 'passenger' as const,
+          booked: trip.bookedSeats.includes(currentSeatNum - 1)
+        },
+        {
+          id: `row-${r}-l2`,
+          number: currentSeatNum,
+          label: String(currentSeatNum++),
+          type: 'passenger' as const,
+          booked: trip.bookedSeats.includes(currentSeatNum - 1)
+        },
+        {
+          id: `row-${r}-m`,
+          number: currentSeatNum,
+          label: `${currentSeatNum}F`, // Appends an 'F' to visually indicate Foldable in the map
+          type: 'foldable' as const,
+          booked: trip.bookedSeats.includes(currentSeatNum - 1)
+        },
+        {
+          id: `row-${r}-r`,
+          number: currentSeatNum,
+          label: String(currentSeatNum++),
+          type: 'passenger' as const,
+          booked: trip.bookedSeats.includes(currentSeatNum - 1)
+        }
+      ];
+      matrix.push(rowSeats);
     }
-    return r;
+    
+    return matrix;
   }, [bus, trip]);
 
   if (!trip || !route || !bus) {
     return (
       <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
-        <div className="text-center"><div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3"><IconBus size={24} className="text-gray-300" /></div>
+        <div className="text-center">
+          <div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <IconBus size={24} className="text-gray-300" />
+          </div>
           <h3 className="font-semibold text-gray-700 mb-1 text-sm">Trip not found</h3>
-          <button onClick={() => navigate('/search')} className="text-xs text-primary-600 font-semibold hover:underline mt-2">Search trips</button></div>
+          <button onClick={() => navigate('/search')} className="text-xs text-primary-600 font-semibold hover:underline mt-2">Search trips</button>
+        </div>
       </div>
     );
   }
@@ -44,46 +124,54 @@ const BookingPage: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
-        <div className="text-center"><div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3"><IconLock size={24} className="text-gray-300" /></div>
+        <div className="text-center">
+          <div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <IconLock size={24} className="text-gray-300" />
+          </div>
           <h3 className="font-semibold text-gray-700 mb-1 text-sm">Login required</h3>
           <p className="text-xs text-gray-400 mb-3">Please log in to book a ticket</p>
-          <button onClick={() => navigate('/login')} className="bg-primary-600 text-white px-5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 mx-auto"><IconLogin size={14} /> Log in</button></div>
+          <button onClick={() => navigate('/login')} className="bg-primary-600 text-white px-5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 mx-auto">
+            <IconLogin size={14} /> Log in
+          </button>
+        </div>
       </div>
     );
   }
 
   const handleBooking = async () => {
-  if (!selectedSeat || !user) return;
-  setStep('processing');
-  try {
-    const b = await createBooking({
-      tripId: trip.id,
-      passengerId: user.id,
-      companyId: trip.companyId,
-      seatNumber: selectedSeat,
-      passengerName: user.name,
-      passengerPhone: user.phone,
-      origin: route.origin,
-      destination: route.destination,
-      departureDate: trip.date,
-      departureTime: trip.departureTime,
-      price: trip.price,
-      status: 'confirmed',
-      qrCode: ''
-    });
-    setBookingId(b.id);
-    setStep('success');
-  } catch (e) {
-    console.error(e);
-    setStep('seat');
-    alert('Booking failed. Please try again.');
-  }
-};
+    if (!selectedSeat || !user) return;
+    setStep('processing');
+    try {
+      const b = await createBooking({
+        tripId: trip.id,
+        passengerId: user.id,
+        companyId: trip.companyId,
+        seatNumber: selectedSeat,
+        passengerName: user.name,
+        passengerPhone: user.phone,
+        origin: route.origin,
+        destination: route.destination,
+        departureDate: trip.date,
+        departureTime: trip.departureTime,
+        price: trip.price,
+        status: 'confirmed',
+        qrCode: ''
+      });
+      setBookingId(b.id);
+      setStep('success');
+    } catch (e) {
+      console.error(e);
+      setStep('seat');
+      alert('Booking failed. Please try again.');
+    }
+  };
 
   if (step === 'success') return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl border border-border shadow-sm p-7 text-center max-w-sm w-full slide-up">
-        <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4"><IconCheckCircle size={28} className="text-emerald-500" /></div>
+        <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <IconCheckCircle size={28} className="text-emerald-500" />
+        </div>
         <h2 className="text-lg font-bold text-gray-900 mb-1">Booking confirmed</h2>
         <p className="text-gray-400 text-xs mb-5">Your ticket has been booked successfully</p>
         <div className="bg-surface-secondary rounded-xl p-4 mb-5 text-left">
@@ -104,9 +192,11 @@ const BookingPage: React.FC = () => {
 
   if (step === 'processing') return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
-      <div className="text-center"><div className="w-10 h-10 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+      <div className="text-center">
+        <div className="w-10 h-10 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <h3 className="font-semibold text-gray-700 text-sm">Processing payment…</h3>
-        <p className="text-xs text-gray-400 mt-1">Please wait for confirmation</p></div>
+        <p className="text-xs text-gray-400 mt-1">Please wait for confirmation</p>
+      </div>
     </div>
   );
 
@@ -131,8 +221,12 @@ const BookingPage: React.FC = () => {
                   <div className="flex items-center gap-2 text-sm font-bold text-gray-900">{route.origin} <IconArrowRight size={14} className="text-gray-300" /> {route.destination}</div>
                 </div>
                 <div className="text-right">
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1"><IconCalendar size={12} />{new Date(trip.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400"><IconClock size={12} />{trip.departureTime} – {trip.arrivalTime}</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-1">
+                    <IconCalendar size={12} />{new Date(trip.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <IconClock size={12} />{trip.departureTime} – {trip.arrivalTime}
+                  </div>
                 </div>
               </div>
             </div>
@@ -140,33 +234,55 @@ const BookingPage: React.FC = () => {
             {/* Seat layout */}
             <div className="bg-white rounded-xl border border-border p-5">
               <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-2"><IconSeat size={16} /> Select your seat</h3>
-              <div className="flex gap-5 mb-5 text-[11px]">
-                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-surface-secondary border border-border rounded" /> Available</span>
+              <div className="flex flex-wrap gap-4 mb-5 text-[11px]">
+                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-white border border-border rounded" /> Standard Seat</span>
+                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-amber-50 border border-amber-200 rounded" /> Foldable Seat (F)</span>
                 <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-primary-600 rounded" /> Selected</span>
                 <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-gray-200 rounded" /> Booked</span>
               </div>
-              <div className="bg-surface-secondary rounded-xl p-5 border border-border-light">
-                <div className="bg-gray-200 rounded-t-xl h-5 w-3/4 mx-auto mb-5 flex items-center justify-center"><span className="text-[9px] font-semibold text-gray-500 uppercase tracking-wider">Driver</span></div>
-                <div className="space-y-2 max-w-[240px] mx-auto">
-                  {rows.map((row, ri) => (
-                    <div key={ri} className="flex items-center gap-2">
-                      <div className="flex gap-1.5">
-                        {row.slice(0, 2).map(s => (
-                          <button key={s.number} disabled={s.booked} onClick={() => setSelectedSeat(s.number)}
-                            className={`w-10 h-9 rounded-lg text-[11px] font-semibold transition-all ${s.booked ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : selectedSeat === s.number ? 'bg-primary-600 text-white shadow-md shadow-primary-200 scale-105' : 'bg-white border border-border text-gray-600 hover:border-primary-300 hover:bg-primary-50'}`}>
-                            {s.number}
+              
+              <div className="bg-surface-secondary rounded-xl p-6 border border-border-light max-w-[280px] mx-auto">
+                {/* Windshield Indicator */}
+                <div className="text-center font-bold text-gray-400 text-[10px] tracking-widest uppercase mb-4 pb-2 border-b border-gray-200">
+                  Front / Windshield
+                </div>
+
+                {/* Unified dynamic grid rendering columns cleanly */}
+                <div className="space-y-3">
+                  {layoutRows.map((row, ri) => (
+                    <div key={ri} className="grid grid-cols-4 gap-2">
+                      {row.map((slot) => {
+                        if (slot.type === 'empty') {
+                          return <div key={slot.id} className="w-10 h-9" />;
+                        }
+
+                        if (slot.type === 'driver') {
+                          return (
+                            <div key={slot.id} className="w-10 h-9 bg-gray-800 text-white rounded-lg flex items-center justify-center text-[10px] font-bold shadow-sm">
+                              Drv
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={slot.id}
+                            disabled={slot.booked}
+                            onClick={() => setSelectedSeat(slot.number || null)}
+                            className={`w-10 h-9 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center border ${
+                              slot.booked
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed border-transparent'
+                                : selectedSeat === slot.number
+                                ? 'bg-primary-600 text-white shadow-md shadow-primary-200 scale-105 border-transparent'
+                                : slot.type === 'foldable'
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300'
+                                : 'bg-white border border-border text-gray-600 hover:border-primary-300 hover:bg-primary-50'
+                            }`}
+                          >
+                            {slot.label}
                           </button>
-                        ))}
-                      </div>
-                      <div className="w-6 text-center text-[9px] text-gray-300 font-medium">{ri + 1}</div>
-                      <div className="flex gap-1.5">
-                        {row.slice(2).map(s => (
-                          <button key={s.number} disabled={s.booked} onClick={() => setSelectedSeat(s.number)}
-                            className={`w-10 h-9 rounded-lg text-[11px] font-semibold transition-all ${s.booked ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : selectedSeat === s.number ? 'bg-primary-600 text-white shadow-md shadow-primary-200 scale-105' : 'bg-white border border-border text-gray-600 hover:border-primary-300 hover:bg-primary-50'}`}>
-                            {s.number}
-                          </button>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
@@ -179,10 +295,15 @@ const BookingPage: React.FC = () => {
             <div className="bg-white rounded-xl border border-border p-5 sticky top-[76px]">
               <h3 className="font-semibold text-gray-900 text-sm mb-4">Booking summary</h3>
               <div className="space-y-2.5 text-xs mb-5">
-                {[ ['Route', `${route.origin} → ${route.destination}`], ['Company', company], ['Date', new Date(trip.date+'T00:00:00').toLocaleDateString()], ['Time', trip.departureTime], ['Seat', selectedSeat ? String(selectedSeat) : '—'] ]
-                  .map(([l, v], i) => (
-                    <div key={i} className="flex justify-between"><span className="text-gray-400">{l}</span><span className="font-semibold text-gray-800">{v}</span></div>
-                  ))}
+                {[ 
+                  ['Route', `${route.origin} → ${route.destination}`], 
+                  ['Company', company], 
+                  ['Date', new Date(trip.date+'T00:00:00').toLocaleDateString()], 
+                  ['Time', trip.departureTime], 
+                  ['Seat', selectedSeat ? String(selectedSeat) : '—'] 
+                ].map(([l, v], i) => (
+                  <div key={i} className="flex justify-between"><span className="text-gray-400">{l}</span><span className="font-semibold text-gray-800">{v}</span></div>
+                ))}
                 <div className="border-t border-border-light pt-2.5 flex justify-between">
                   <span className="font-semibold text-gray-900">Total</span>
                   <span className="font-bold text-primary-600 text-sm">{trip.price.toLocaleString()} RWF</span>
