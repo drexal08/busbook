@@ -1,14 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { login as fbLogin, logout as fbLogout, register as fbRegister } from '../lib/auth';
 import { User, UserRole } from '../types';
-
-// HARDCODED ADMIN ACCOUNT CREDENTIALS
-const ADMIN_EMAIL = "byiringirinnocent8@gmail.com";
-const ADMIN_NAME = "Byiringiro Innocent";
-const ADMIN_PHONE = "0796415099";
 
 interface AuthContextType {
   user: User | null;
@@ -27,40 +22,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        const snap = await getDoc(userRef);
-        
-        if (snap.exists()) {
-          let userData = snap.data() as User;
-          
-          // Upgrades your existing passenger doc field permanently to admin when you log in
-          if (firebaseUser.email === ADMIN_EMAIL && userData.role !== 'admin') {
-            await updateDoc(userRef, { role: 'admin' as UserRole, name: ADMIN_NAME, phone: ADMIN_PHONE });
-            userData.role = 'admin' as UserRole;
-            userData.name = ADMIN_NAME;
-            userData.phone = ADMIN_PHONE;
-          }
-          
-          setUser(userData);
-        } else {
-          // If you exist in Auth but somehow don't have a document yet
-          if (firebaseUser.email === ADMIN_EMAIL) {
-            const newAdminDoc = {
-              id: firebaseUser.uid,
-              name: ADMIN_NAME,
-              email: ADMIN_EMAIL,
-              phone: ADMIN_PHONE,
-              role: 'admin' as UserRole,
-              password: '',
-              createdAt: new Date().toISOString()
-            } as User;
-
-            await setDoc(userRef, newAdminDoc);
-            setUser(newAdminDoc);
-          } else {
-            setUser(null);
-          }
-        }
+        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+        if (snap.exists()) setUser(snap.data() as User);
       } else {
         setUser(null);
       }
@@ -71,18 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = useCallback(async (email: string, password: string) => {
     try {
       const { profile } = await fbLogin(email, password);
-      let updatedProfile = { ...profile } as User;
-      
-      // Upgrades your role to admin on the spot if it matches your email
-      if (email === ADMIN_EMAIL && updatedProfile.role !== 'admin') {
-        const userRef = doc(db, 'users', updatedProfile.id);
-        await updateDoc(userRef, { role: 'admin' as UserRole, name: ADMIN_NAME, phone: ADMIN_PHONE });
-        updatedProfile.role = 'admin' as UserRole;
-        updatedProfile.name = ADMIN_NAME;
-        updatedProfile.phone = ADMIN_PHONE;
-      }
-      
-      setUser(updatedProfile);
+      setUser(profile as User);
       return { success: true };
     } catch {
       return { success: false, error: 'Invalid email or password' };
@@ -91,11 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = useCallback(async (name: string, email: string, password: string, phone: string, role: UserRole) => {
     try {
-      // Clean fix: If it's your admin email trying to register, pass it to 'passenger' in the library 
-      // to keep TypeScript happy. The useEffect listener above will catch it immediately and save it as an 'admin' document.
-      const libraryRole = email === ADMIN_EMAIL ? ('passenger' as const) : (role as 'passenger' | 'company');
-      
-      const firebaseUser = await fbRegister(name, email, password, phone, libraryRole);
+      const firebaseUser = await fbRegister(name, email, password, phone, role);
       return { success: true, userId: firebaseUser.uid };
     } catch (e: any) {
       return { success: false, error: e.message || 'Signup failed' };
