@@ -33,17 +33,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (snap.exists()) {
           let userData = snap.data() as User;
           
-          // If you log in and your role in Firestore isn't 'admin' yet, update and save it!
+          // Upgrades your existing passenger doc field permanently to admin when you log in
           if (firebaseUser.email === ADMIN_EMAIL && userData.role !== 'admin') {
-            await updateDoc(userRef, { role: 'admin', name: ADMIN_NAME, phone: ADMIN_PHONE });
-            userData.role = 'admin';
+            await updateDoc(userRef, { role: 'admin' as UserRole, name: ADMIN_NAME, phone: ADMIN_PHONE });
+            userData.role = 'admin' as UserRole;
             userData.name = ADMIN_NAME;
             userData.phone = ADMIN_PHONE;
           }
           
           setUser(userData);
         } else {
-          // Fallback: Fixed TypeScript error by type casting the object layout cleanly
+          // If you exist in Auth but somehow don't have a document yet
           if (firebaseUser.email === ADMIN_EMAIL) {
             const newAdminDoc = {
               id: firebaseUser.uid,
@@ -51,8 +51,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: ADMIN_EMAIL,
               phone: ADMIN_PHONE,
               role: 'admin' as UserRole,
-              password: '', // Provided fallback to satisfy User type constraints
-              createdAt: new Date().toISOString() // Provided fallback to satisfy User type constraints
+              password: '',
+              createdAt: new Date().toISOString()
             } as User;
 
             await setDoc(userRef, newAdminDoc);
@@ -73,11 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { profile } = await fbLogin(email, password);
       let updatedProfile = { ...profile } as User;
       
-      // Forces a persistent database document upgrade upon explicit login submission
+      // Upgrades your role to admin on the spot if it matches your email
       if (email === ADMIN_EMAIL && updatedProfile.role !== 'admin') {
         const userRef = doc(db, 'users', updatedProfile.id);
-        await updateDoc(userRef, { role: 'admin', name: ADMIN_NAME, phone: ADMIN_PHONE });
-        updatedProfile.role = 'admin';
+        await updateDoc(userRef, { role: 'admin' as UserRole, name: ADMIN_NAME, phone: ADMIN_PHONE });
+        updatedProfile.role = 'admin' as UserRole;
         updatedProfile.name = ADMIN_NAME;
         updatedProfile.phone = ADMIN_PHONE;
       }
@@ -91,7 +91,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = useCallback(async (name: string, email: string, password: string, phone: string, role: UserRole) => {
     try {
-      const firebaseUser = await fbRegister(name, email, password, phone, role);
+      // Clean fix: If it's your admin email trying to register, pass it to 'passenger' in the library 
+      // to keep TypeScript happy. The useEffect listener above will catch it immediately and save it as an 'admin' document.
+      const libraryRole = email === ADMIN_EMAIL ? ('passenger' as const) : (role as 'passenger' | 'company');
+      
+      const firebaseUser = await fbRegister(name, email, password, phone, libraryRole);
       return { success: true, userId: firebaseUser.uid };
     } catch (e: any) {
       return { success: false, error: e.message || 'Signup failed' };
