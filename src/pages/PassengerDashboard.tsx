@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getPassengerBookings } from '../lib/bookings';
 import { IconSearch, IconArrowRight, IconCalendar, IconClock, IconSeat, IconTicket, IconEye } from '../components/Icons';
+import { auth } from '../lib/firebase';
 
 const PassengerDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -10,10 +11,10 @@ const PassengerDashboard: React.FC = () => {
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     if (!isAuthenticated || !user) { navigate('/login'); return; }
-    getPassengerBookings(user.id)
-      .then(data => setBookings(data.sort((a: any, b: any) => new Date(b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt).getTime() - new Date(a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt).getTime())))
+    getPassengerBookings(auth.currentUser?.uid || user.id)
+      .then((data: any[]) => setBookings(data.sort((a: any, b: any) => new Date(b.createdAt?.seconds ? b.createdAt.seconds * 1000 : b.createdAt).getTime() - new Date(a.createdAt?.seconds ? a.createdAt.seconds * 1000 : a.createdAt).getTime())))
       .finally(() => setLoading(false));
   }, [user, isAuthenticated]);
 

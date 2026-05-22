@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, updateDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 
 export async function createBooking(data: {
   tripId: string;
@@ -31,4 +31,10 @@ export async function validateBooking(bookingId: string) {
   if (data.status === 'used') return { valid: false, message: 'Ticket already used' };
   await updateDoc(doc(db, 'bookings', bookingId), { status: 'used' });
   return { valid: true, booking: data };
+}
+
+export async function getPassengerBookings(passengerId: string) {
+  const q = query(collection(db, 'bookings'), where('passengerId', '==', passengerId));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
