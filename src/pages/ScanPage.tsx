@@ -89,7 +89,7 @@ export default function ScanPage() {
         {!scanning && (
           <button onClick={startScanner}
             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold mb-4">
-            📷 Scan QR Code
+            Scan QR Code
           </button>
         )}
 
