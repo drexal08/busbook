@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { IconMail, IconLock, IconUser, IconBuilding, IconScan, IconShield } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
+import { loginWithGoogle } from '../lib/auth';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -11,20 +12,13 @@ const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    const result = login(email, password);
-    if (result.success) navigate('/');
-    else setError(result.error || 'Login failed');
-  };
-
-  const demoLogins = [
-    { label: 'Passenger', email: 'jean@example.com', password: 'pass123', icon: <IconUser size={14} />, color: 'text-primary-600 bg-primary-50 border-primary-100 hover:bg-primary-100' },
-    { label: 'Company', email: 'info@rwandaexpress.rw', password: 'company123', icon: <IconBuilding size={14} />, color: 'text-emerald-600 bg-emerald-50 border-emerald-100 hover:bg-emerald-100' },
-    { label: 'Operator', email: 'emmanuel@rwandaexpress.rw', password: 'oper123', icon: <IconScan size={14} />, color: 'text-violet-600 bg-violet-50 border-violet-100 hover:bg-violet-100' },
-    { label: 'Admin', email: 'admin@busbook.rw', password: 'admin123', icon: <IconShield size={14} />, color: 'text-rose-600 bg-rose-50 border-rose-100 hover:bg-rose-100' },
-  ];
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
+  const result = await login(email, password);
+  if (result.success) navigate('/');
+  else setError(result.error || 'Login failed');
+};
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center py-12 px-4">
@@ -65,6 +59,16 @@ const LoginPage: React.FC = () => {
               className="w-full bg-primary-700 hover:bg-primary-800 text-white font-bold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
               Log in
             </button>
+            <button type="button" onClick={async () => {
+  try {
+    await loginWithGoogle();
+    navigate('/');
+  } catch (e: any) {
+    setError(e.message || 'Google login failed');
+  }
+}} className="w-full border border-border text-gray-700 font-semibold py-3 rounded-xl text-[13px] flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
+  <img src="https://www.google.com/favicon.ico" className="w-4 h-4" /> Continue with Google
+</button>
           </form>
 
           <div className="mt-5 text-center">
@@ -75,17 +79,6 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-5 bg-white rounded-2xl border border-border shadow-sm p-5">
-          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 text-center">Quick demo login</p>
-          <div className="grid grid-cols-2 gap-2">
-            {demoLogins.map(d => (
-              <button key={d.label} onClick={() => { setEmail(d.email); setPassword(d.password); }}
-                className={`flex items-center gap-2 text-xs font-semibold py-2.5 px-3 rounded-xl border transition-all ${d.color}`}>
-                {d.icon} {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -2,7 +2,9 @@ import { auth, db } from './firebase';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signOut
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
@@ -27,4 +29,21 @@ export async function login(email: string, password: string) {
 
 export async function logout() {
   await signOut(auth);
+}
+
+export async function loginWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  const cred = await signInWithPopup(auth, provider);
+  const snap = await getDoc(doc(db, 'users', cred.user.uid));
+  if (!snap.exists()) {
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      id: cred.user.uid,
+      name: cred.user.displayName || '',
+      email: cred.user.email || '',
+      phone: cred.user.phoneNumber || '',
+      role: 'passenger',
+      createdAt: new Date().toISOString()
+    });
+  }
+  return cred.user;
 }
