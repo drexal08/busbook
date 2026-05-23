@@ -52,8 +52,9 @@ export interface Trip {
   departureTime: string;
   arrivalTime: string;
   price: number;
-  availableSeats: number;
-  totalSeats: number;
+  onlineSeats: number;      // seats allocated for online booking
+  availableSeats: number;   // onlineSeats - bookedSeats.length (derived, stored for queries)
+  totalSeats: number;       // physical bus capacity
   bookedSeats: number[];
   status: 'scheduled' | 'departed' | 'cancelled';
 }

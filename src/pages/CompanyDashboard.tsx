@@ -21,11 +21,12 @@ const CompanyDashboard: React.FC = () => {
   const [nbPlate, setNbPlate] = useState('');
   const [nbSeats, setNbSeats] = useState('49');
   const [ntRoute, setNtRoute] = useState('');
-  const [ntBus, setNtBus] = useState('');
-  const [ntDate, setNtDate] = useState('');
-  const [ntDep, setNtDep] = useState('');
-  const [ntArr, setNtArr] = useState('');
-  const [ntPrice, setNtPrice] = useState('');
+const [ntBus, setNtBus] = useState('');
+const [ntDate, setNtDate] = useState('');
+const [ntDep, setNtDep] = useState('');
+const [ntArr, setNtArr] = useState('');
+const [ntPrice, setNtPrice] = useState('');
+const [ntOnlineSeats, setNtOnlineSeats] = useState('');
 
   if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
 
@@ -45,7 +46,25 @@ const CompanyDashboard: React.FC = () => {
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
   const handleAddRoute = (e: React.FormEvent) => { e.preventDefault(); addRoute({ companyId: cid, origin: nrOrigin, destination: nrDest, distance: parseInt(nrDist), duration: nrDur }); setNrOrigin(''); setNrDest(''); setNrDist(''); setNrDur(''); flash('Route added'); setTab('routes'); };
   const handleAddBus = (e: React.FormEvent) => { e.preventDefault(); addBus({ companyId: cid, name: nbName, plateNumber: nbPlate, totalSeats: parseInt(nbSeats), layout: '2-2', amenities: ['AC'] }); setNbName(''); setNbPlate(''); setNbSeats('49'); flash('Bus added'); setTab('buses'); };
-  const handleAddTrip = (e: React.FormEvent) => { e.preventDefault(); addTrip({ routeId: ntRoute, companyId: cid, busId: ntBus, date: ntDate, departureTime: ntDep, arrivalTime: ntArr, price: parseInt(ntPrice), totalSeats: 49, status: 'scheduled' }); flash('Trip scheduled'); setTab('trips'); };
+  const handleAddTrip = async (e: React.FormEvent) => {
+  e.preventDefault();
+  await addTrip({
+    routeId: ntRoute,
+    companyId: cid,
+    busId: ntBus,
+    date: ntDate,
+    departureTime: ntDep,
+    arrivalTime: ntArr,
+    price: parseInt(ntPrice),
+    totalSeats: buses.find(b => b.id === ntBus)?.totalSeats || 49,
+    onlineSeats: parseInt(ntOnlineSeats),
+    status: 'scheduled'
+  });
+  setNtRoute(''); setNtBus(''); setNtDate('');
+  setNtDep(''); setNtArr(''); setNtPrice(''); setNtOnlineSeats('');
+  flash('Trip scheduled');
+  setTab('trips');
+};
 
   const tabs = [
     { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
@@ -214,6 +233,22 @@ const CompanyDashboard: React.FC = () => {
                 <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required /></div>
               </div>
               <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={ntPrice} onChange={e => setNtPrice(e.target.value)} className={field} required /></div>
+              <div>
+  <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
+    Online seats
+  </label>
+  <input
+    type="number"
+    value={ntOnlineSeats}
+    onChange={e => setNtOnlineSeats(e.target.value)}
+    placeholder="Seats available to book online"
+    className={field}
+    required
+  />
+  <p className="text-[10px] text-gray-400 mt-1">
+    Physical capacity: {buses.find(b => b.id === ntBus)?.totalSeats ?? '—'} seats total
+  </p>
+</div>
               <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Schedule trip</button>
             </form>
           </div>

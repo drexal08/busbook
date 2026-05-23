@@ -28,11 +28,11 @@ export async function validateBooking(bookingId: string) {
   const snap = await getDoc(doc(db, 'bookings', bookingId));
   if (!snap.exists()) return { valid: false, message: 'Ticket not found' };
   const data = snap.data();
-  if (data.status === 'used') return { valid: false, message: 'Ticket already used' };
+  if (data.status === 'used') return { valid: false, message: 'Ticket already used', booking: data };
+  if (data.status === 'cancelled') return { valid: false, message: 'Ticket was cancelled', booking: data };
   await updateDoc(doc(db, 'bookings', bookingId), { status: 'used' });
-  return { valid: true, booking: data };
+  return { valid: true, booking: { ...data, id: bookingId, status: 'used' } };
 }
-
 export async function getPassengerBookings(passengerId: string) {
   const q = query(collection(db, 'bookings'), where('passengerId', '==', passengerId));
   const snap = await getDocs(q);

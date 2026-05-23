@@ -1,24 +1,37 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Company, Trip, Booking, Route, Bus } from '../types';
-import { mockCompanies, mockTrips, mockBookings, mockRoutes, mockBuses } from '../data/mockData';
-import { createBooking as fbCreateBooking } from '../lib/bookings';
+import {
+  fetchCompanies, fetchRoutes, fetchBuses, fetchTrips,
+  createCompany as fbCreateCompany,
+  createCompanyWithId,
+  createRoute as fbCreateRoute,
+  createBus as fbCreateBus,
+  createTrip as fbCreateTrip,
+  updateCompanyStatus,
+  decrementTripSeat,
+  fetchCompanyBookings
+} from '../lib/firestore';
+import { createBooking as fbCreateBooking, validateBooking as fbValidateBooking } from '../lib/bookings';
+
 interface DataContextType {
   companies: Company[];
   trips: Trip[];
   bookings: Booking[];
   routes: Route[];
   buses: Bus[];
+  loading: boolean;
+  refreshCompanyData: (companyId: string) => Promise<void>;
   searchTrips: (origin: string, destination: string, date: string) => Trip[];
   createBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
   cancelBooking: (bookingId: string) => void;
-  approveCompany: (companyId: string) => void;
-  rejectCompany: (companyId: string) => void;
-  addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => void;
-  addCompanyWithId: (company: Company) => void;
-  addRoute: (route: Omit<Route, 'id'>) => void;
-  addBus: (bus: Omit<Bus, 'id'>) => void;
-  addTrip: (trip: Omit<Trip, 'id' | 'bookedSeats' | 'availableSeats'>) => Trip;
-  validateTicket: (qrCode: string) => { valid: boolean; booking?: Booking; error?: string };
+  approveCompany: (companyId: string) => Promise<void>;
+  rejectCompany: (companyId: string) => Promise<void>;
+  addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Promise<string>;
+  addCompanyWithId: (company: Company) => Promise<void>;
+  addRoute: (route: Omit<Route, 'id'>) => Promise<void>;
+  addBus: (bus: Omit<Bus, 'id'>) => Promise<void>;
+  addTrip: (trip: Omit<Trip, 'id' | 'bookedSeats' | 'availableSeats'>) => Promise<Trip>;
+  validateTicket: (qrCode: string) => Promise<{ valid: boolean; booking?: Booking; error?: string }>;
   getPassengerBookings: (passengerId: string) => Booking[];
   getCompanyTrips: (companyId: string) => Trip[];
   getCompanyBookings: (companyId: string) => Booking[];
@@ -32,170 +45,187 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [companies, setCompanies] = useState<Company[]>(mockCompanies);
-  const [trips, setTrips] = useState<Trip[]>(mockTrips);
-  const [bookings, setBookings] = useState<Booking[]>(mockBookings);
-  const [routes, setRoutes] = useState<Route[]>(mockRoutes);
-  const [buses, setBuses] = useState<Bus[]>(mockBuses);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [buses, setBuses] = useState<Bus[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  // Initial load
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [c, r, b, t] = await Promise.all([
+          fetchCompanies(),
+          fetchRoutes(),
+          fetchBuses(),
+          fetchTrips()
+        ]);
+        setCompanies(c);
+        setRoutes(r);
+        setBuses(b);
+        setTrips(t);
+      } catch (e) {
+        console.error('DataContext load error:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const refreshCompanyData = useCallback(async (companyId: string) => {
+    const [r, b, t, bk] = await Promise.all([
+      fetchRoutes(companyId),
+      fetchBuses(companyId),
+      fetchTrips({ companyId }),
+      fetchCompanyBookings(companyId)
+    ]);
+    setRoutes(prev => [...prev.filter(x => x.companyId !== companyId), ...r]);
+    setBuses(prev => [...prev.filter(x => x.companyId !== companyId), ...b]);
+    setTrips(prev => [...prev.filter(x => x.companyId !== companyId), ...t]);
+    setBookings(prev => [...prev.filter(x => x.companyId !== companyId), ...bk]);
+  }, []);
+
+  // Only show trips where availableSeats > 0
   const searchTrips = useCallback((origin: string, destination: string, date: string) => {
     return trips.filter(trip => {
       const route = routes.find(r => r.id === trip.routeId);
       if (!route) return false;
-      const matchRoute = route.origin.toLowerCase().includes(origin.toLowerCase()) &&
+      const matchRoute =
+        route.origin.toLowerCase().includes(origin.toLowerCase()) &&
         route.destination.toLowerCase().includes(destination.toLowerCase());
       const matchDate = trip.date === date;
       const isApproved = companies.find(c => c.id === trip.companyId)?.status === 'approved';
-      return matchRoute && matchDate && isApproved && trip.status === 'scheduled';
+      const hasSeats = trip.availableSeats > 0;
+      return matchRoute && matchDate && isApproved && trip.status === 'scheduled' && hasSeats;
     });
   }, [trips, routes, companies]);
 
-
-const createBooking = useCallback(async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
-  const bookingId = await fbCreateBooking(bookingData);
-  const booking: Booking = {
-    ...bookingData,
-    id: bookingId,
-    qrCode: bookingId,
-    createdAt: new Date().toISOString()
-  };
-  setBookings(prev => [...prev, booking]);
-  setTrips(prev => prev.map(t => {
-    if (t.id === booking.tripId) {
-      return {
-        ...t,
-        bookedSeats: [...t.bookedSeats, booking.seatNumber],
-        availableSeats: t.availableSeats - 1
-      };
-    }
-    return t;
-  }));
-  return booking;
-}, []);
+  const createBooking = useCallback(async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
+    const bookingId = await fbCreateBooking(bookingData);
+    // Decrement trip seat count in Firestore
+    await decrementTripSeat(bookingData.tripId, bookingData.seatNumber);
+    const booking: Booking = {
+      ...bookingData,
+      id: bookingId,
+      qrCode: bookingId,
+      createdAt: new Date().toISOString()
+    };
+    setBookings(prev => [...prev, booking]);
+    setTrips(prev => prev.map(t => {
+      if (t.id === booking.tripId) {
+        const newBooked = [...t.bookedSeats, booking.seatNumber];
+        return {
+          ...t,
+          bookedSeats: newBooked,
+          availableSeats: t.onlineSeats - newBooked.length
+        };
+      }
+      return t;
+    }));
+    return booking;
+  }, []);
 
   const cancelBooking = useCallback((bookingId: string) => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
-    
-    setBookings(prev => prev.map(b => 
+    setBookings(prev => prev.map(b =>
       b.id === bookingId ? { ...b, status: 'cancelled' as const } : b
     ));
-    
     setTrips(prev => prev.map(t => {
       if (t.id === booking.tripId) {
-        return {
-          ...t,
-          bookedSeats: t.bookedSeats.filter(s => s !== booking.seatNumber),
-          availableSeats: t.availableSeats + 1
-        };
+        const newBooked = t.bookedSeats.filter(s => s !== booking.seatNumber);
+        return { ...t, bookedSeats: newBooked, availableSeats: t.onlineSeats - newBooked.length };
       }
       return t;
     }));
   }, [bookings]);
 
-  const approveCompany = useCallback((companyId: string) => {
-    setCompanies(prev => prev.map(c => 
-      c.id === companyId ? { ...c, status: 'approved' as const } : c
-    ));
+  const approveCompany = useCallback(async (companyId: string) => {
+    await updateCompanyStatus(companyId, 'approved');
+    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, status: 'approved' } : c));
   }, []);
 
-  const rejectCompany = useCallback((companyId: string) => {
-    setCompanies(prev => prev.map(c => 
-      c.id === companyId ? { ...c, status: 'rejected' as const } : c
-    ));
+  const rejectCompany = useCallback(async (companyId: string) => {
+    await updateCompanyStatus(companyId, 'rejected');
+    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, status: 'rejected' } : c));
   }, []);
 
-  const addCompany = useCallback((company: Omit<Company, 'id' | 'createdAt'>) => {
-    const newCompany: Company = {
-      ...company,
-      id: `comp-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0]
-    };
+  const addCompany = useCallback(async (company: Omit<Company, 'id' | 'createdAt'>) => {
+    const id = await fbCreateCompany({ ...company, createdAt: new Date().toISOString().split('T')[0] });
+    const newCompany = { ...company, id, createdAt: new Date().toISOString().split('T')[0] };
     setCompanies(prev => [...prev, newCompany]);
+    return id;
   }, []);
 
-  const addCompanyWithId = useCallback((company: Company) => {
-    setCompanies(prev => [...prev, company]);
+  const addCompanyWithId = useCallback(async (company: Company) => {
+  await createCompanyWithId(company);
+  setCompanies(prev => [...prev, company]);
+}, []);
+
+  const addRoute = useCallback(async (route: Omit<Route, 'id'>) => {
+    const id = await fbCreateRoute(route);
+    setRoutes(prev => [...prev, { ...route, id }]);
   }, []);
 
-  const addRoute = useCallback((route: Omit<Route, 'id'>) => {
-    const newRoute: Route = {
-      ...route,
-      id: `route-${Date.now()}`
-    };
-    setRoutes(prev => [...prev, newRoute]);
+  const addBus = useCallback(async (bus: Omit<Bus, 'id'>) => {
+    const id = await fbCreateBus(bus);
+    setBuses(prev => [...prev, { ...bus, id }]);
   }, []);
 
-  const addBus = useCallback((bus: Omit<Bus, 'id'>) => {
-    const newBus: Bus = {
-      ...bus,
-      id: `bus-${Date.now()}`
-    };
-    setBuses(prev => [...prev, newBus]);
-  }, []);
-
-  const addTrip = useCallback((tripData: Omit<Trip, 'id' | 'bookedSeats' | 'availableSeats'>) => {
-    const bus = buses.find(b => b.id === tripData.busId);
-    const totalSeats = bus?.totalSeats || 49;
-    const newTrip: Trip = {
+  const addTrip = useCallback(async (tripData: Omit<Trip, 'id' | 'bookedSeats' | 'availableSeats'>) => {
+    const newTrip: Omit<Trip, 'id'> = {
       ...tripData,
-      id: `trip-${Date.now()}`,
       bookedSeats: [],
-      availableSeats: totalSeats,
-      totalSeats
+      availableSeats: tripData.onlineSeats,  // start = allocated online seats
     };
-    setTrips(prev => [...prev, newTrip]);
-    return newTrip;
-  }, [buses]);
+    const id = await fbCreateTrip(newTrip);
+    const trip = { ...newTrip, id };
+    setTrips(prev => [...prev, trip]);
+    return trip;
+  }, []);
 
-  const validateTicket = useCallback((qrCode: string) => {
-    const booking = bookings.find(b => b.qrCode === qrCode);
-    if (!booking) return { valid: false, error: 'Ticket not found' };
-    if (booking.status === 'cancelled') return { valid: false, error: 'Ticket has been cancelled', booking };
-    if (booking.status === 'used') return { valid: false, error: 'Ticket already used', booking };
-    
-    setBookings(prev => prev.map(b => 
-      b.id === booking.id ? { ...b, status: 'used' as const } : b
-    ));
-    
-    return { valid: true, booking: { ...booking, status: 'used' as const } };
-  }, [bookings]);
+  const validateTicket = useCallback(async (qrCode: string) => {
+    const result = await fbValidateBooking(qrCode);
+    if (result.valid) {
+      setBookings(prev => prev.map(b =>
+        b.id === qrCode ? { ...b, status: 'used' as const } : b
+      ));
+    }
+    return result as { valid: boolean; booking?: Booking; error?: string };
+  }, []);
 
-  const getPassengerBookings = useCallback((passengerId: string) => {
-    return bookings.filter(b => b.passengerId === passengerId);
-  }, [bookings]);
+  const getPassengerBookings = useCallback((passengerId: string) =>
+    bookings.filter(b => b.passengerId === passengerId), [bookings]);
 
-  const getCompanyTrips = useCallback((companyId: string) => {
-    return trips.filter(t => t.companyId === companyId);
-  }, [trips]);
+  const getCompanyTrips = useCallback((companyId: string) =>
+    trips.filter(t => t.companyId === companyId), [trips]);
 
-  const getCompanyBookings = useCallback((companyId: string) => {
-    return bookings.filter(b => b.companyId === companyId);
-  }, [bookings]);
+  const getCompanyBookings = useCallback((companyId: string) =>
+    bookings.filter(b => b.companyId === companyId), [bookings]);
 
-  const getCompanyRoutes = useCallback((companyId: string) => {
-    return routes.filter(r => r.companyId === companyId);
-  }, [routes]);
+  const getCompanyRoutes = useCallback((companyId: string) =>
+    routes.filter(r => r.companyId === companyId), [routes]);
 
-  const getCompanyBuses = useCallback((companyId: string) => {
-    return buses.filter(b => b.companyId === companyId);
-  }, [buses]);
+  const getCompanyBuses = useCallback((companyId: string) =>
+    buses.filter(b => b.companyId === companyId), [buses]);
 
-  const getCompanyName = useCallback((companyId: string) => {
-    return companies.find(c => c.id === companyId)?.name || 'Unknown';
-  }, [companies]);
+  const getCompanyName = useCallback((companyId: string) =>
+    companies.find(c => c.id === companyId)?.name || 'Unknown', [companies]);
 
-  const getRouteInfo = useCallback((routeId: string) => {
-    return routes.find(r => r.id === routeId);
-  }, [routes]);
+  const getRouteInfo = useCallback((routeId: string) =>
+    routes.find(r => r.id === routeId), [routes]);
 
-  const getBusInfo = useCallback((busId: string) => {
-    return buses.find(b => b.id === busId);
-  }, [buses]);
+  const getBusInfo = useCallback((busId: string) =>
+    buses.find(b => b.id === busId), [buses]);
 
   return (
     <DataContext.Provider value={{
-      companies, trips, bookings, routes, buses,
+      companies, trips, bookings, routes, buses, loading,
+      refreshCompanyData,
       searchTrips, createBooking, cancelBooking,
       approveCompany, rejectCompany, addCompany, addCompanyWithId,
       addRoute, addBus, addTrip, validateTicket,
