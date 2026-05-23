@@ -79,10 +79,21 @@ export interface Booking {
 
 export interface Payment {
   id: string;
-  bookingId: string;
+  paypackRef: string;
+  tripId: string;
+  companyId: string;
+  passengerId: string;
+  seatNumber: number;
   amount: number;
-  method: 'mtn_momo' | 'airtel_money';
   phone: string;
   status: 'pending' | 'completed' | 'failed';
+  passengerName: string;
+  passengerPhone: string;
+  origin: string;
+  destination: string;
+  departureDate: string;
+  departureTime: string;
   createdAt: string;
+  bookingId?: string;
+  processedAt?: string;
 }
