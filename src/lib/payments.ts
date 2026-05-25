@@ -9,6 +9,17 @@ interface CashinInput {
   seatNumber: number;
 }
 
+async function readResponseBody(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 export async function initiateCashin(
   data: CashinInput
 ): Promise<{ ref?: string; error?: string }> {
@@ -31,11 +42,18 @@ export async function initiateCashin(
     });
 
     if (!res.ok) {
-      const errData = await res.json();
-      throw new Error(errData.error || 'Cashin failed');
+      const errData = await readResponseBody(res);
+      const message = typeof errData === 'string' ? errData : errData?.error;
+      throw new Error(message || `Payment request failed with status ${res.status}`);
     }
 
-    const result = await res.json();
+    const result = await readResponseBody(res);
+    if (!result?.ref) {
+      throw new Error(
+        'Payment function did not return a transaction reference. If you are testing locally, run with Netlify Functions enabled.'
+      );
+    }
+
     return { ref: result.ref };
 
   } catch (err: any) {

@@ -2,12 +2,13 @@ import { auth, db } from './firebase';
 import { UserRole } from '../types';
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   signInWithEmailAndPassword,
   signOut,
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 
 export async function register(
   name: string,
@@ -18,17 +19,29 @@ export async function register(
   companyId?: string
 ) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  await setDoc(doc(db, 'users', cred.user.uid), {
-    id: cred.user.uid,
-    name,
-    email,
-    phone,
-    role,
-    ...(companyId ? { companyId } : {}),
-    ...(role === 'operator' ? { operatorStatus: 'pending' } : {}),
-    createdAt: new Date().toISOString()
-  });
+  try {
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      id: cred.user.uid,
+      name,
+      email,
+      phone,
+      role,
+      ...(companyId ? { companyId } : {}),
+      ...(role === 'operator' ? { operatorStatus: 'pending' } : {}),
+      createdAt: new Date().toISOString()
+    });
+  } catch (error) {
+    await deleteUser(cred.user).catch(() => {});
+    throw error;
+  }
   return cred.user;
+}
+
+export async function deleteRegistration(userId: string) {
+  await deleteDoc(doc(db, 'users', userId)).catch(() => {});
+  if (auth.currentUser?.uid === userId) {
+    await deleteUser(auth.currentUser).catch(() => {});
+  }
 }
 
 export async function login(email: string, password: string) {

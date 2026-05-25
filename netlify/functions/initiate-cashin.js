@@ -43,6 +43,75 @@ function json(statusCode, body) {
   };
 }
 
+async function completeTestPayment(ref) {
+  const paymentRef = db.collection('payments').doc(ref);
+
+  await db.runTransaction(async (tx) => {
+    const paymentSnap = await tx.get(paymentRef);
+    const payment = paymentSnap.data();
+
+    if (!payment || payment.status !== 'pending') return;
+
+    const tripRef = db.collection('trips').doc(payment.tripId);
+    const tripSnap = await tx.get(tripRef);
+
+    if (!tripSnap.exists) {
+      tx.update(paymentRef, {
+        status: 'failed',
+        failureReason: 'Trip no longer exists',
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const trip = tripSnap.data();
+    const bookedSeats = trip.bookedSeats || [];
+
+    if (bookedSeats.includes(payment.seatNumber)) {
+      tx.update(paymentRef, {
+        status: 'failed',
+        failureReason: 'Seat is already booked',
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const bookingRef = db.collection('bookings').doc();
+    const bookingId = bookingRef.id;
+    const newBooked = [...bookedSeats, payment.seatNumber];
+
+    tx.set(bookingRef, {
+      id: bookingId,
+      tripId: payment.tripId,
+      passengerId: payment.passengerId,
+      companyId: payment.companyId,
+      seatNumber: payment.seatNumber,
+      passengerName: payment.passengerName,
+      passengerPhone: payment.passengerPhone,
+      origin: payment.origin,
+      destination: payment.destination,
+      departureDate: payment.departureDate,
+      departureTime: payment.departureTime,
+      price: payment.amount,
+      status: 'confirmed',
+      qrCode: bookingId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    tx.update(tripRef, {
+      bookedSeats: newBooked,
+      availableSeats: trip.onlineSeats - newBooked.length,
+    });
+
+    tx.update(paymentRef, {
+      status: 'completed',
+      bookingId,
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      testMode: true,
+    });
+  });
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' });
@@ -95,38 +164,44 @@ exports.handler = async (event) => {
       return json(409, { error: 'Seat is already booked' });
     }
 
-    const [routeSnap, token] = await Promise.all([
-      db.collection('routes').doc(trip.routeId).get(),
-      getPaypackToken(),
-    ]);
+    const routeSnap = await db.collection('routes').doc(trip.routeId).get();
 
     if (!routeSnap.exists) {
       return json(500, { error: 'Trip route is missing' });
     }
 
     const route = routeSnap.data();
+    let ref = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const cashinRes = await fetch(`${PAYPACK_API}/transactions/cashin`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'X-Webhook-Mode': process.env.PAYPACK_WEBHOOK_MODE || 'production',
-      },
-      body: JSON.stringify({
-        number: phone,
-        amount: trip.price,
-      }),
-    });
+    if (process.env.PAYMENT_TEST_MODE !== 'true') {
+      const token = await getPaypackToken();
 
-    if (!cashinRes.ok) {
-      const text = await cashinRes.text();
-      throw new Error(`Paypack cashin failed: ${text}`);
+      const cashinRes = await fetch(`${PAYPACK_API}/transactions/cashin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Webhook-Mode': process.env.PAYPACK_WEBHOOK_MODE || 'production',
+        },
+        body: JSON.stringify({
+          number: phone,
+          amount: trip.price,
+        }),
+      });
+
+      if (!cashinRes.ok) {
+        const text = await cashinRes.text();
+        throw new Error(`Paypack cashin failed: ${text}`);
+      }
+
+      const cashin = await cashinRes.json();
+      ref = cashin.ref || cashin.data?.ref;
+
+      if (!ref) {
+        throw new Error('Paypack did not return a transaction reference');
+      }
     }
-
-    const cashin = await cashinRes.json();
-    const ref = cashin.ref;
 
     await db.collection('payments').doc(ref).set({
       paypackRef: ref,
@@ -144,7 +219,12 @@ exports.handler = async (event) => {
       departureDate: trip.date,
       departureTime: trip.departureTime,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      testMode: process.env.PAYMENT_TEST_MODE === 'true',
     });
+
+    if (process.env.PAYMENT_TEST_MODE === 'true') {
+      await completeTestPayment(ref);
+    }
 
     return json(200, { ref });
   } catch (err) {

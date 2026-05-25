@@ -5,6 +5,7 @@ import { useData } from '../contexts/DataContext';
 import { UserRole } from '../types';
 import { IconUser, IconBuilding, IconScan, IconCheckCircle } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
+import { deleteRegistration } from '../lib/auth';
 
 const SignupPage: React.FC = () => {
   const [name, setName] = useState('');
@@ -17,12 +18,15 @@ const SignupPage: React.FC = () => {
   const [companyDescription, setCompanyDescription] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const { signup } = useAuth();
-  const { companies, addCompanyWithId } = useData();
+  const { companies, loading, addCompanyWithId } = useData();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
+  if (submitting) return;
+
   setError(''); 
   setSuccess('');
   
@@ -43,6 +47,11 @@ const SignupPage: React.FC = () => {
 
   // For operators: verify company exists and is approved
   if (role === 'operator') {
+    if (loading) {
+      setError('Company data is still loading. Please try again in a moment.');
+      return;
+    }
+
     const companyExists = companies.find(c => c.id === companyCode.trim() && c.status === 'approved');
     if (!companyExists) {
       setError('Invalid company code or company not approved');
@@ -51,42 +60,66 @@ const SignupPage: React.FC = () => {
   }
 
   if (role === 'company') {
+    setSubmitting(true);
     const companyId = `comp-${Date.now()}`;
-    const result = await signup(name, email, password, phone, role, companyId);
-    if (result.success && result.userId) {
-      addCompanyWithId({ 
-        id: companyId, 
-        name: companyName, 
-        ownerId: result.userId, 
-        description: companyDescription || 'New bus company', 
-        status: 'pending', 
-        phone, 
-        email, 
-        createdAt: new Date().toISOString().split('T')[0] 
-      });
+    try {
+      const result = await signup(name, email, password, phone, role, companyId);
+      if (!result.success || !result.userId) {
+        setError(result.error || 'Registration failed');
+        return;
+      }
+
+      try {
+        await addCompanyWithId({ 
+          id: companyId, 
+          name: companyName, 
+          ownerId: result.userId, 
+          description: companyDescription || 'New bus company', 
+          status: 'pending', 
+          phone, 
+          email, 
+          createdAt: new Date().toISOString().split('T')[0] 
+        });
+      } catch (setupError) {
+        await deleteRegistration(result.userId);
+        throw setupError;
+      }
+
       setSuccess('Registration submitted! Admin approval is required before you can operate.');
       setTimeout(() => navigate('/login'), 3000);
-    } else {
-      setError(result.error || 'Registration failed');
+    } catch (e: any) {
+      setError(e.message || 'Registration failed. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
     return;
   }
 
   // For operators: signup with companyId
   if (role === 'operator') {
-    const result = await signup(name, email, password, phone, role, companyCode.trim());
-    if (result.success && result.userId) {
-      setSuccess('Registration submitted! Company approval required before you can scan tickets.');
-      setTimeout(() => navigate('/login'), 3000);
-    } else {
-      setError(result.error || 'Registration failed');
+    setSubmitting(true);
+    try {
+      const result = await signup(name, email, password, phone, role, companyCode.trim());
+      if (result.success && result.userId) {
+        setSuccess('Registration submitted! Company approval required before you can scan tickets.');
+        setTimeout(() => navigate('/login'), 3000);
+      } else {
+        setError(result.error || 'Registration failed');
+      }
+    } finally {
+      setSubmitting(false);
     }
     return;
   }
 
-  const result = await signup(name, email, password, phone, role);
-  if (result.success) navigate('/');
-  else setError(result.error || 'Signup failed');
+  setSubmitting(true);
+  try {
+    const result = await signup(name, email, password, phone, role);
+    if (result.success) navigate('/');
+    else setError(result.error || 'Signup failed');
+  } finally {
+    setSubmitting(false);
+  }
 };
 
 
@@ -177,8 +210,8 @@ const SignupPage: React.FC = () => {
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Password</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" className={fieldClasses} required />
             </div>
-            <button type="submit" className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
-              {role === 'company' ? 'Submit registration' : 'Create account'}
+            <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
+              {submitting ? 'Creating account...' : role === 'company' ? 'Submit registration' : 'Create account'}
             </button>
           </form>
 
