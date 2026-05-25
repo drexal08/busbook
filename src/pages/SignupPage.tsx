@@ -13,6 +13,7 @@ const SignupPage: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('passenger');
   const [companyName, setCompanyName] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
   const [companyDescription, setCompanyDescription] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -35,14 +36,14 @@ const SignupPage: React.FC = () => {
     return; 
   }
 
-  if (role === 'operator' && !companyName.trim()) {
+  if (role === 'operator' && !companyCode.trim()) {
     setError('Company code is required');
     return;
   }
 
   // For operators: verify company exists and is approved
   if (role === 'operator') {
-    const companyExists = companies.find(c => c.id === companyName.trim() && c.status === 'approved');
+    const companyExists = companies.find(c => c.id === companyCode.trim() && c.status === 'approved');
     if (!companyExists) {
       setError('Invalid company code or company not approved');
       return;
@@ -73,7 +74,7 @@ const SignupPage: React.FC = () => {
 
   // For operators: signup with companyId
   if (role === 'operator') {
-    const result = await signup(name, email, password, phone, role, companyName.trim());
+    const result = await signup(name, email, password, phone, role, companyCode.trim());
     if (result.success && result.userId) {
       setSuccess('Registration submitted! Company approval required before you can scan tickets.');
       setTimeout(() => navigate('/login'), 3000);
@@ -141,6 +142,23 @@ const SignupPage: React.FC = () => {
                   Company registrations require admin approval before activation.
                 </div>
               </>
+            )}
+
+            {role === 'operator' && (
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Company code</label>
+                <input
+                  type="text"
+                  value={companyCode}
+                  onChange={e => setCompanyCode(e.target.value)}
+                  placeholder="Ask your company admin for this code"
+                  className={fieldClasses}
+                  required
+                />
+                <p className="text-[10px] text-gray-400 mt-1.5">
+                  This is the company ID shown in the company dashboard.
+                </p>
+              </div>
             )}
 
             <div>

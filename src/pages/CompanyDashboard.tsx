@@ -32,6 +32,7 @@ const [ntArr, setNtArr] = useState('');
 const [ntPrice, setNtPrice] = useState('');
 const [ntOnlineSeats, setNtOnlineSeats] = useState('');
 const [operators, setOperators] = useState<User[]>([]);
+const [codeCopied, setCodeCopied] = useState(false);
 
   const cid = user?.companyId || '';
   const company = companies.find(c => c.id === cid);
@@ -59,6 +60,12 @@ const [operators, setOperators] = useState<User[]>([]);
   }, [cid]);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
+  const copyCompanyCode = async () => {
+    if (!cid) return;
+    await navigator.clipboard.writeText(cid);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  };
   const handleAddRoute = (e: React.FormEvent) => { e.preventDefault(); addRoute({ companyId: cid, origin: nrOrigin, destination: nrDest, distance: parseInt(nrDist), duration: nrDur }); setNrOrigin(''); setNrDest(''); setNrDist(''); setNrDur(''); flash('Route added'); setTab('routes'); };
   const handleAddBus = (e: React.FormEvent) => { e.preventDefault(); addBus({ companyId: cid, name: nbName, plateNumber: nbPlate, totalSeats: parseInt(nbSeats), layout: '2-2', amenities: ['AC'] }); setNbName(''); setNbPlate(''); setNbSeats('49'); flash('Bus added'); setTab('buses'); };
   const handleAddTrip = async (e: React.FormEvent) => {
@@ -102,9 +109,19 @@ const [operators, setOperators] = useState<User[]>([]);
             <h1 className="text-base font-bold text-gray-900">{company?.name || 'Company'}</h1>
             <p className="text-xs text-gray-400">Manage fleet, routes, and schedules</p>
           </div>
-          <span className={`text-[10px] font-semibold px-3 py-1 rounded-full border ${company?.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : company?.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-red-50 text-red-500 border-red-100'}`}>
-            {company?.status?.toUpperCase()}
-          </span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <button
+              type="button"
+              onClick={copyCompanyCode}
+              className="text-[10px] font-semibold px-3 py-1 rounded-full border border-border bg-surface-secondary text-gray-600 hover:bg-surface-tertiary transition-all"
+              title="Copy company code"
+            >
+              Code: <span className="font-mono">{cid || 'unassigned'}</span>{codeCopied ? ' copied' : ''}
+            </button>
+            <span className={`text-[10px] font-semibold px-3 py-1 rounded-full border ${company?.status === 'approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : company?.status === 'pending' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-red-50 text-red-500 border-red-100'}`}>
+              {company?.status?.toUpperCase()}
+            </span>
+          </div>
         </div>
       </div>
 
