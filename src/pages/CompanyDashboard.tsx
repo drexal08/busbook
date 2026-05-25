@@ -3,9 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { cities } from '../data/mockData';
-import { IconChart, IconRoute, IconBus, IconCalendar, IconTicket, IconPlus, IconArrowRight, IconSeat, IconWallet } from '../components/Icons';
+import { IconChart, IconRoute, IconBus, IconCalendar, IconTicket, IconPlus, IconArrowRight, IconSeat, IconWallet, IconScan } from '../components/Icons';
 import Select from '../components/Select';
 import DatePicker from '../components/DatePicker';
+import { mockUsers } from '../data/mockData';
+import { db } from '../lib/firebase';
+import { doc, updateDoc, collection } from 'firebase/firestore'; 
+import { IconCheck, IconX } from '../components/Icons';
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -67,12 +71,13 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
 };
 
   const tabs = [
-    { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
-    { key: 'routes', label: 'Routes', icon: <IconRoute size={15} /> },
-    { key: 'buses', label: 'Buses', icon: <IconBus size={15} /> },
-    { key: 'trips', label: 'Trips', icon: <IconCalendar size={15} /> },
-    { key: 'bookings', label: 'Bookings', icon: <IconTicket size={15} /> },
-  ];
+  { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
+  { key: 'routes', label: 'Routes', icon: <IconRoute size={15} /> },
+  { key: 'buses', label: 'Buses', icon: <IconBus size={15} /> },
+  { key: 'trips', label: 'Trips', icon: <IconCalendar size={15} /> },
+  { key: 'operators', label: 'Operators', icon: <IconScan size={15} /> }, // NEW
+  { key: 'bookings', label: 'Bookings', icon: <IconTicket size={15} /> },
+];
 
   const field = "w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all";
 
@@ -110,7 +115,7 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
                 { label: 'Trips', value: trips.length, icon: <IconCalendar size={18} />, color: 'text-primary-600 bg-primary-50' },
                 { label: 'Today', value: trips.filter(t => t.date === today).length, icon: <IconBus size={18} />, color: 'text-emerald-600 bg-emerald-50' },
                 { label: 'Bookings', value: bookings.length, icon: <IconTicket size={18} />, color: 'text-violet-600 bg-violet-50' },
-                { label: 'Revenue', value: `${(revenue/1000).toFixed(0)}K`, icon: <IconWallet size={18} />, color: 'text-amber-600 bg-amber-50' },
+                { label: 'Revenue', value: revenue >= 1000 ? `${(revenue/1000).toFixed(1)}K` : revenue.toString(), icon: <IconWallet size={18} />, color: 'text-amber-600 bg-amber-50' },
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl border border-border p-4">
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-2.5 ${s.color}`}>{s.icon}</div>
@@ -253,6 +258,54 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
             </form>
           </div>
         )}
+
+        {/* Operators */}
+{tab === 'operators' && (
+  <div>
+    <h3 className="font-semibold text-gray-900 text-sm mb-4">Operators</h3>
+    <div className="space-y-2">
+      {mockUsers.filter(u => u.role === 'operator' && u.companyId === cid).map(op => (
+        <div key={op.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold text-gray-900">{op.name}</div>
+            <div className="text-[11px] text-gray-400">{op.email} · {op.phone}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              op.operatorStatus === 'approved' ? 'bg-emerald-50 text-emerald-600' :
+              op.operatorStatus === 'pending' ? 'bg-amber-50 text-amber-600' :
+              'bg-red-50 text-red-500'
+            }`}>
+              {op.operatorStatus || 'pending'}
+            </span>
+            {op.operatorStatus === 'pending' && (
+              <>
+                <button 
+                  onClick={async () => {
+                    await updateDoc(doc(db, 'users', op.id), { operatorStatus: 'approved' });
+                    flash('Operator approved');
+                  }}
+                  className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center"
+                >
+                  <IconCheck size={14} />
+                </button>
+                <button 
+                  onClick={async () => {
+                    await updateDoc(doc(db, 'users', op.id), { operatorStatus: 'rejected' });
+                    flash('Operator rejected');
+                  }}
+                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center"
+                >
+                  <IconX size={14} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
         {/* Bookings */}
         {tab === 'bookings' && (

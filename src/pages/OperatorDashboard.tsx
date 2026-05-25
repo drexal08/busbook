@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { IconScan, IconBus, IconUsers, IconCheckCircle, IconXCircle, IconClock, IconSeat, IconArrowRight, IconTicket } from '../components/Icons';
 import Select from '../components/Select';
+import { useState } from 'react';
 
 const OperatorDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -14,9 +14,27 @@ const OperatorDashboard: React.FC = () => {
   const [scanning, setScanning] = useState(false);
   const [selTrip, setSelTrip] = useState<string | null>(null);
   const [tab, setTab] = useState<'scan' | 'trips' | 'passengers'>('scan');
+  
+  // 1. FIRST: Authenticate and confirm role boundaries
+  if (!isAuthenticated || !user || user.role !== 'operator') { 
+    navigate('/login'); 
+    return null; 
+  }
 
-  if (!isAuthenticated || !user || user.role !== 'operator') { navigate('/login'); return null; }
-
+  // 2. SECOND: Check safe operator state variables now that user object is fully loaded
+  if (user.operatorStatus !== 'approved') {
+    return (
+      <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
+        <div className="text-center bg-white rounded-2xl border border-border p-8 max-w-md">
+          <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <IconClock size={24} className="text-amber-500" />
+          </div>
+          <h3 className="font-bold text-gray-700 text-sm mb-2">Approval Pending</h3>
+          <p className="text-xs text-gray-400">Your company must approve your operator account before you can scan tickets.</p>
+        </div>
+      </div>
+    );
+  }
   const cid = user.companyId || '';
   const cTrips = getCompanyTrips(cid);
   const cBookings = bookings.filter(b => b.companyId === cid);
@@ -24,15 +42,27 @@ const OperatorDashboard: React.FC = () => {
   const todayTrips = cTrips.filter(t => t.date === today);
   const tripPassengers = (id: string) => bookings.filter(b => b.tripId === id && b.status !== 'cancelled');
 
-  const handleScan = () => {
-    if (!qr.trim()) return;
-    setScanning(true);
-    setTimeout(() => {
-      const r = validateTicket(qr.trim());
-      setResult({ valid: r.valid, message: r.error || 'Ticket validated — passenger may board.', booking: r.booking });
-      setScanning(false);
-    }, 1000);
-  };
+ const handleScan = async (bookingId?: string) => {
+  const targetId = bookingId || qr.trim();
+  if (!targetId) return;
+  
+  setScanning(true);
+  try {
+    const r = await validateTicket(targetId);
+    setResult({ 
+      valid: r.valid, 
+      message: r.error || 'Ticket validated — passenger may board.', 
+      booking: r.booking 
+    });
+  } catch (error) {
+    setResult({ 
+      valid: false, 
+      message: 'Validation failed. Please try again.' 
+    });
+  } finally {
+    setScanning(false);
+  }
+};
 
   const selTripData = selTrip ? cTrips.find(t => t.id === selTrip) : null;
   const selPassengers = selTrip ? tripPassengers(selTrip) : [];
@@ -63,18 +93,90 @@ const OperatorDashboard: React.FC = () => {
         </div>
 
         {tab === 'scan' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white rounded-xl border border-border p-6">
-              <h2 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-2"><IconScan size={16} /> Scan ticket</h2>
-              <p className="text-[11px] text-gray-400 mb-5">Enter QR code from a passenger's ticket to validate.</p>
-              <div className="space-y-3">
-                <input type="text" value={qr} onChange={e => setQr(e.target.value)} placeholder="Paste QR code here…"
-                  className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-xs font-mono focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all" />
-                <button onClick={handleScan} disabled={!qr.trim() || scanning}
-                  className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2">
-                  {scanning ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Validating…</> : <><IconScan size={14} /> Validate</>}
-                </button>
-              </div>
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div className="bg-white rounded-xl border border-border p-6">
+      <h2 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-2"><IconScan size={16} /> Scan ticket</h2>
+      <p className="text-[11px] text-gray-400 mb-5">Scan QR code or enter booking ID to validate passenger ticket.</p>
+      
+      {/* Camera Scanner Integration */}
+      {!scanning && (
+        <button 
+          onClick={async () => {
+            setScanning(true);
+            const Html5Qrcode = (await import('html5-qrcode')).Html5Qrcode;
+            const scanner = new Html5Qrcode('qr-reader-operator');
+            try {
+              await scanner.start(
+                { facingMode: 'environment' },
+                { fps: 10, qrbox: 250 },
+                async (decodedText) => {
+                  await scanner.stop();
+                  setScanning(false);
+                  // Extract booking ID from various QR formats
+                  let extractedId = decodedText.trim();
+                  if (extractedId.startsWith('{') && extractedId.endsWith('}')) {
+                    try {
+                      const parsed = JSON.parse(extractedId);
+                      if (parsed.id) extractedId = parsed.id;
+                    } catch (e) {}
+                  }
+                  setQr(extractedId);
+                  handleScan(extractedId);
+                },
+                () => {}
+              );
+            } catch (err) {
+              console.error('Camera error:', err);
+              setScanning(false);
+              setResult({ valid: false, message: 'Camera access denied or unavailable' });
+            }
+          }}
+          className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 mb-4"
+        >
+          <IconScan size={14} /> Open Camera Scanner
+        </button>
+      )}
+
+      {/* Camera Preview */}
+      <div id="qr-reader-operator" className={scanning ? 'mb-4 rounded-xl overflow-hidden border-2 border-violet-500' : 'hidden'} />
+
+      {scanning && (
+        <button 
+          onClick={() => {
+            setScanning(false);
+            // Stop scanner cleanup handled by component
+          }}
+          className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs mb-4 transition"
+        >
+          Cancel Scanning
+        </button>
+      )}
+
+      <div className="space-y-3">
+        <input 
+          type="text" 
+          value={qr} 
+          onChange={e => setQr(e.target.value)} 
+          placeholder="Or paste booking ID here…"
+          className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-xs font-mono focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all" 
+        />
+        <button 
+          onClick={() => handleScan(qr)} 
+          disabled={!qr.trim() || scanning}
+          className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+        >
+          {scanning ? (
+            <>
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> 
+              Validating…
+            </>
+          ) : (
+            <>
+              <IconScan size={14} /> Validate Ticket
+            </>
+          )}
+        </button>
+      </div>
 
               {result && (
                 <div className={`mt-4 p-4 rounded-xl border fade-in ${result.valid ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>

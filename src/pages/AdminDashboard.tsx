@@ -14,7 +14,7 @@ const AdminDashboard: React.FC = () => {
 
   const pending = companies.filter(c => c.status === 'pending');
   const approved = companies.filter(c => c.status === 'approved');
-  const totalRev = bookings.filter(b => b.status !== 'cancelled').reduce((s, b) => s + b.price, 0);
+  const revenue = bookings.filter(b => b.status !== 'cancelled').reduce((s, b) => s + b.price, 0);
   const today = new Date().toISOString().split('T')[0];
 
   const tabs = [
@@ -50,7 +50,7 @@ const AdminDashboard: React.FC = () => {
                 { label: 'Companies', value: companies.length, sub: `${approved.length} approved`, icon: <IconBuilding size={18} />, color: 'text-primary-600 bg-primary-50' },
                 { label: 'Pending', value: pending.length, sub: 'awaiting review', icon: <IconClock size={18} />, color: 'text-amber-600 bg-amber-50' },
                 { label: 'Active trips', value: trips.filter(t => t.date === today).length, sub: 'today', icon: <IconBus size={18} />, color: 'text-emerald-600 bg-emerald-50' },
-                { label: 'Revenue', value: `${(totalRev/1000).toFixed(0)}K`, sub: 'RWF total', icon: <IconWallet size={18} />, color: 'text-violet-600 bg-violet-50' },
+                { label: 'Revenue', value: revenue >= 1000 ? `${(revenue/1000).toFixed(1)}K` : revenue.toString(), icon: <IconWallet size={18} />, color: 'text-amber-600 bg-amber-50' },
               ].map((s, i) => (
                 <div key={i} className="bg-white rounded-xl border border-border p-4">
                   <div className="flex items-center justify-between mb-2.5">

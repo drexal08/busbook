@@ -12,6 +12,10 @@ import {
   fetchCompanyBookings
 } from '../lib/firestore';
 import { createBooking as fbCreateBooking, validateBooking as fbValidateBooking } from '../lib/bookings';
+// FIX 1: Added 'collection' to the firebase/firestore imports
+import { onSnapshot, collection } from 'firebase/firestore'; 
+// FIX 2: Imported your Firestore instance 'db'
+import { db } from '../lib/firebase'; 
 
 interface DataContextType {
   companies: Company[];
@@ -52,6 +56,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [buses, setBuses] = useState<Bus[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Real-time bookings listener
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+      const updated = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
+      setBookings(updated);
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
   // Initial load
   useEffect(() => {
     const load = async () => {
@@ -89,7 +103,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setBookings(prev => [...prev.filter(x => x.companyId !== companyId), ...bk]);
   }, []);
 
-  // Only show trips where availableSeats > 0
   const searchTrips = useCallback((origin: string, destination: string, date: string) => {
     return trips.filter(trip => {
       const route = routes.find(r => r.id === trip.routeId);
@@ -106,7 +119,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createBooking = useCallback(async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
     const bookingId = await fbCreateBooking(bookingData);
-    // Decrement trip seat count in Firestore
     await decrementTripSeat(bookingData.tripId, bookingData.seatNumber);
     const booking: Booking = {
       ...bookingData,
@@ -162,9 +174,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const addCompanyWithId = useCallback(async (company: Company) => {
-  await createCompanyWithId(company);
-  setCompanies(prev => [...prev, company]);
-}, []);
+    await createCompanyWithId(company);
+    setCompanies(prev => [...prev, company]);
+  }, []);
 
   const addRoute = useCallback(async (route: Omit<Route, 'id'>) => {
     const id = await fbCreateRoute(route);
@@ -180,7 +192,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newTrip: Omit<Trip, 'id'> = {
       ...tripData,
       bookedSeats: [],
-      availableSeats: tripData.onlineSeats,  // start = allocated online seats
+      availableSeats: tripData.onlineSeats,
     };
     const id = await fbCreateTrip(newTrip);
     const trip = { ...newTrip, id };
@@ -190,11 +202,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const validateTicket = useCallback(async (qrCode: string) => {
     const result = await fbValidateBooking(qrCode);
-    if (result.valid) {
-      setBookings(prev => prev.map(b =>
-        b.id === qrCode ? { ...b, status: 'used' as const } : b
-      ));
-    }
     return result as { valid: boolean; booking?: Booking; error?: string };
   }, []);
 

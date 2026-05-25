@@ -97,3 +97,16 @@ export interface Payment {
   bookingId?: string;
   processedAt?: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  phone: string;
+  companyId?: string;
+  operatorStatus?: 'pending' | 'approved' | 'rejected'; // NEW
+  avatar?: string;
+  createdAt: string;
+}

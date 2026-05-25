@@ -17,24 +17,71 @@ const SignupPage: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const { signup, updateUserCompanyId } = useAuth();
-  const { addCompanyWithId } = useData();
+  const { companies, addCompanyWithId } = useData();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  setError(''); setSuccess('');
-  if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
-  if (role === 'company' && !companyName.trim()) { setError('Company name is required'); return; }
+  setError(''); 
+  setSuccess('');
+  
+  if (password.length < 6) { 
+    setError('Password must be at least 6 characters'); 
+    return; 
+  }
+
+  if (role === 'company' && !companyName.trim()) { 
+    setError('Company name is required'); 
+    return; 
+  }
+
+  if (role === 'operator' && !companyName.trim()) {
+    setError('Company code is required');
+    return;
+  }
+
+  // For operators: verify company exists and is approved
+  if (role === 'operator') {
+    const companyExists = companies.find(c => c.id === companyName.trim() && c.status === 'approved');
+    if (!companyExists) {
+      setError('Invalid company code or company not approved');
+      return;
+    }
+  }
 
   if (role === 'company') {
     const companyId = `comp-${Date.now()}`;
-    const result = await signup(name, email, password, phone, role, companyId);
+    const result = await signup(name, email, password, phone, role);
     if (result.success && result.userId) {
-      addCompanyWithId({ id: companyId, name: companyName, ownerId: result.userId, description: companyDescription || 'New bus company', status: 'pending', phone, email, createdAt: new Date().toISOString().split('T')[0] });
+      addCompanyWithId({ 
+        id: companyId, 
+        name: companyName, 
+        ownerId: result.userId, 
+        description: companyDescription || 'New bus company', 
+        status: 'pending', 
+        phone, 
+        email, 
+        createdAt: new Date().toISOString().split('T')[0] 
+      });
       await updateUserCompanyId(result.userId, companyId);
       setSuccess('Registration submitted! Admin approval is required before you can operate.');
       setTimeout(() => navigate('/login'), 3000);
-    } else setError(result.error || 'Registration failed');
+    } else {
+      setError(result.error || 'Registration failed');
+    }
+    return;
+  }
+
+  // For operators: signup with companyId
+  if (role === 'operator') {
+    const result = await signup(name, email, password, phone, role);
+    if (result.success && result.userId) {
+      await updateUserCompanyId(result.userId, companyName.trim());
+      setSuccess('Registration submitted! Company approval required before you can scan tickets.');
+      setTimeout(() => navigate('/login'), 3000);
+    } else {
+      setError(result.error || 'Registration failed');
+    }
     return;
   }
 
@@ -42,6 +89,7 @@ const SignupPage: React.FC = () => {
   if (result.success) navigate('/');
   else setError(result.error || 'Signup failed');
 };
+
 
   const roles: { value: UserRole; label: string; desc: string; icon: React.ReactNode }[] = [
     { value: 'passenger', label: 'Passenger', desc: 'Book tickets', icon: <IconUser size={18} /> },
