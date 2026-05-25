@@ -50,11 +50,12 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON' }) };
   }
 
-  if (webhookEvent.kind !== 'transaction:processed') {
+  const eventKind = webhookEvent.kind || webhookEvent.event_kind;
+  if (eventKind !== 'transaction:processed') {
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
   }
 
-  const txn = webhookEvent.data;
+  const txn = webhookEvent.data || webhookEvent;
   const ref = txn.ref;
   const status = txn.status;
 
@@ -74,49 +75,71 @@ exports.handler = async (event) => {
     }
 
     if (status === 'successful') {
-      const bookingRef = db.collection('bookings').doc();
-      const bookingId = bookingRef.id;
+      let bookingId = '';
 
-      const batch = db.batch();
+      await db.runTransaction(async (tx) => {
+        const freshPaymentSnap = await tx.get(paymentRef);
+        const freshPayment = freshPaymentSnap.data();
 
-      batch.set(bookingRef, {
-        id: bookingId,
-        tripId: payment.tripId,
-        passengerId: payment.passengerId,
-        companyId: payment.companyId,
-        seatNumber: payment.seatNumber,
-        passengerName: payment.passengerName,
-        passengerPhone: payment.passengerPhone,
-        origin: payment.origin,
-        destination: payment.destination,
-        departureDate: payment.departureDate,
-        departureTime: payment.departureTime,
-        price: payment.amount,
-        status: 'confirmed',
-        qrCode: bookingId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        if (!freshPayment || freshPayment.status !== 'pending') return;
 
-      batch.update(paymentRef, {
-        status: 'completed',
-        bookingId: bookingId,
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        const tripRef = db.collection('trips').doc(freshPayment.tripId);
+        const tripSnap = await tx.get(tripRef);
 
-      await batch.commit();
+        if (!tripSnap.exists) {
+          tx.update(paymentRef, {
+            status: 'failed',
+            failureReason: 'Trip no longer exists',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
 
-      // Decrement trip seat
-      const tripRef = db.collection('trips').doc(payment.tripId);
-      const tripSnap = await tripRef.get();
-      if (tripSnap.exists) {
         const trip = tripSnap.data();
-        const newBooked = [...(trip.bookedSeats || []), payment.seatNumber];
-        await tripRef.update({
+        const bookedSeats = trip.bookedSeats || [];
+
+        if (bookedSeats.includes(freshPayment.seatNumber)) {
+          tx.update(paymentRef, {
+            status: 'failed',
+            failureReason: 'Seat is already booked',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+
+        const bookingRef = db.collection('bookings').doc();
+        bookingId = bookingRef.id;
+        const newBooked = [...bookedSeats, freshPayment.seatNumber];
+
+        tx.set(bookingRef, {
+          id: bookingId,
+          tripId: freshPayment.tripId,
+          passengerId: freshPayment.passengerId,
+          companyId: freshPayment.companyId,
+          seatNumber: freshPayment.seatNumber,
+          passengerName: freshPayment.passengerName,
+          passengerPhone: freshPayment.passengerPhone,
+          origin: freshPayment.origin,
+          destination: freshPayment.destination,
+          departureDate: freshPayment.departureDate,
+          departureTime: freshPayment.departureTime,
+          price: freshPayment.amount,
+          status: 'confirmed',
+          qrCode: bookingId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        tx.update(tripRef, {
           bookedSeats: newBooked,
           availableSeats: trip.onlineSeats - newBooked.length,
         });
-      }
 
+        tx.update(paymentRef, {
+          status: 'completed',
+          bookingId,
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
     } else {
       await paymentRef.update({
         status: 'failed',

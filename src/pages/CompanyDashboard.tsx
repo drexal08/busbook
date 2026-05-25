@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
@@ -6,10 +6,10 @@ import { cities } from '../data/mockData';
 import { IconChart, IconRoute, IconBus, IconCalendar, IconTicket, IconPlus, IconArrowRight, IconSeat, IconWallet, IconScan } from '../components/Icons';
 import Select from '../components/Select';
 import DatePicker from '../components/DatePicker';
-import { mockUsers } from '../data/mockData';
 import { db } from '../lib/firebase';
-import { doc, updateDoc, collection } from 'firebase/firestore'; 
+import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'; 
 import { IconCheck, IconX } from '../components/Icons';
+import { User } from '../types';
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -31,10 +31,9 @@ const [ntDep, setNtDep] = useState('');
 const [ntArr, setNtArr] = useState('');
 const [ntPrice, setNtPrice] = useState('');
 const [ntOnlineSeats, setNtOnlineSeats] = useState('');
+const [operators, setOperators] = useState<User[]>([]);
 
-  if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
-
-  const cid = user.companyId || '';
+  const cid = user?.companyId || '';
   const company = companies.find(c => c.id === cid);
   const trips = getCompanyTrips(cid);
   const bookings = getCompanyBookings(cid);
@@ -46,6 +45,18 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
   const cityOpts = useMemo(() => cities.map(c => ({ value: c, label: c })), []);
   const routeOpts = useMemo(() => routes.map(r => ({ value: r.id, label: `${r.origin} → ${r.destination}` })), [routes]);
   const busOpts = useMemo(() => buses.map(b => ({ value: b.id, label: `${b.name} (${b.plateNumber})` })), [buses]);
+
+  useEffect(() => {
+    if (!cid) return;
+    const q = query(
+      collection(db, 'users'),
+      where('role', '==', 'operator'),
+      where('companyId', '==', cid)
+    );
+    return onSnapshot(q, (snapshot) => {
+      setOperators(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as User)));
+    });
+  }, [cid]);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
   const handleAddRoute = (e: React.FormEvent) => { e.preventDefault(); addRoute({ companyId: cid, origin: nrOrigin, destination: nrDest, distance: parseInt(nrDist), duration: nrDur }); setNrOrigin(''); setNrDest(''); setNrDist(''); setNrDur(''); flash('Route added'); setTab('routes'); };
@@ -69,6 +80,8 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
   flash('Trip scheduled');
   setTab('trips');
 };
+
+  if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
 
   const tabs = [
   { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
@@ -264,7 +277,7 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
   <div>
     <h3 className="font-semibold text-gray-900 text-sm mb-4">Operators</h3>
     <div className="space-y-2">
-      {mockUsers.filter(u => u.role === 'operator' && u.companyId === cid).map(op => (
+      {operators.map(op => (
         <div key={op.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between">
           <div>
             <div className="text-xs font-semibold text-gray-900">{op.name}</div>
@@ -303,6 +316,7 @@ const [ntOnlineSeats, setNtOnlineSeats] = useState('');
           </div>
         </div>
       ))}
+      {operators.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No operator accounts yet</div>}
     </div>
   </div>
 )}

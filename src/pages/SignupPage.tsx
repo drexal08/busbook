@@ -16,7 +16,7 @@ const SignupPage: React.FC = () => {
   const [companyDescription, setCompanyDescription] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const { signup, updateUserCompanyId } = useAuth();
+  const { signup } = useAuth();
   const { companies, addCompanyWithId } = useData();
   const navigate = useNavigate();
 
@@ -51,7 +51,7 @@ const SignupPage: React.FC = () => {
 
   if (role === 'company') {
     const companyId = `comp-${Date.now()}`;
-    const result = await signup(name, email, password, phone, role);
+    const result = await signup(name, email, password, phone, role, companyId);
     if (result.success && result.userId) {
       addCompanyWithId({ 
         id: companyId, 
@@ -63,7 +63,6 @@ const SignupPage: React.FC = () => {
         email, 
         createdAt: new Date().toISOString().split('T')[0] 
       });
-      await updateUserCompanyId(result.userId, companyId);
       setSuccess('Registration submitted! Admin approval is required before you can operate.');
       setTimeout(() => navigate('/login'), 3000);
     } else {
@@ -74,9 +73,8 @@ const SignupPage: React.FC = () => {
 
   // For operators: signup with companyId
   if (role === 'operator') {
-    const result = await signup(name, email, password, phone, role);
+    const result = await signup(name, email, password, phone, role, companyName.trim());
     if (result.success && result.userId) {
-      await updateUserCompanyId(result.userId, companyName.trim());
       setSuccess('Registration submitted! Company approval required before you can scan tickets.');
       setTimeout(() => navigate('/login'), 3000);
     } else {

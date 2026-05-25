@@ -1,24 +1,42 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
+import { initiateCashin, listenToPayment } from '../lib/payments';
 import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconSeat, IconClock, IconCalendar, IconBus, IconLock, IconLogin } from '../components/Icons';
 
 const BookingPage: React.FC = () => {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
-  const { trips, getCompanyName, getRouteInfo, getBusInfo, createBooking } = useData();
+  const { trips, getCompanyName, getRouteInfo, getBusInfo } = useData();
   const { user, isAuthenticated } = useAuth();
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mtn_momo' | 'airtel_money'>('mtn_momo');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [step, setStep] = useState<'seat' | 'payment' | 'processing' | 'success'>('seat');
   const [bookingId, setBookingId] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [paymentError, setPaymentError] = useState('');
 
   const trip = trips.find(t => t.id === tripId);
   const route = trip ? getRouteInfo(trip.routeId) : undefined;
   const company = trip ? getCompanyName(trip.companyId) : '';
   const bus = trip ? getBusInfo(trip.busId) : undefined;
+
+  useEffect(() => {
+    if (!paymentRef) return;
+    return listenToPayment(paymentRef, (payment) => {
+      if (payment.status === 'completed' && payment.bookingId) {
+        setBookingId(payment.bookingId);
+        setStep('success');
+      }
+
+      if (payment.status === 'failed') {
+        setPaymentError(payment.failureReason || 'Payment failed. Please try again.');
+        setStep('payment');
+      }
+    });
+  }, [paymentRef]);
 
   // DYNAMIC SEAT MAP ENGINE: Automatically configures structure based on any total capacity
   const layoutRows = useMemo(() => {
@@ -140,29 +158,24 @@ const BookingPage: React.FC = () => {
 
   const handleBooking = async () => {
     if (!selectedSeat || !user) return;
+    setPaymentError('');
     setStep('processing');
     try {
-      const b = await createBooking({
+      const result = await initiateCashin({
         tripId: trip.id,
-        passengerId: user.id,
-        companyId: trip.companyId,
         seatNumber: selectedSeat,
-        passengerName: user.name,
-        passengerPhone: user.phone,
-        origin: route.origin,
-        destination: route.destination,
-        departureDate: trip.date,
-        departureTime: trip.departureTime,
-        price: trip.price,
-        status: 'confirmed',
-        qrCode: ''
+        phone: paymentPhone,
       });
-      setBookingId(b.id);
-      setStep('success');
+
+      if (result.error || !result.ref) {
+        throw new Error(result.error || 'Payment could not be started');
+      }
+
+      setPaymentRef(result.ref);
     } catch (e) {
       console.error(e);
-      setStep('seat');
-      alert('Booking failed. Please try again.');
+      setPaymentError(e instanceof Error ? e.message : 'Payment failed. Please try again.');
+      setStep('payment');
     }
   };
 
@@ -319,12 +332,17 @@ const BookingPage: React.FC = () => {
               {step === 'payment' && (
                 <div className="space-y-3 fade-in">
                   <h4 className="font-semibold text-gray-900 text-xs">Payment method</h4>
+                  {paymentError && (
+                    <div className="bg-red-50 border border-red-100 text-red-600 px-3 py-2 rounded-xl text-[11px] font-medium">
+                      {paymentError}
+                    </div>
+                  )}
                   {[
-                    { key: 'mtn_momo' as const, name: 'MTN MoMo', sub: 'Mobile Money', color: 'bg-yellow-400 text-yellow-900' },
-                    { key: 'airtel_money' as const, name: 'Airtel Money', sub: 'Coming soon', color: 'bg-red-500 text-white' },
+                    { key: 'mtn_momo' as const, name: 'MTN MoMo', sub: 'Mobile Money', color: 'bg-yellow-400 text-yellow-900', disabled: false },
+                    { key: 'airtel_money' as const, name: 'Airtel Money', sub: 'Mobile Money', color: 'bg-red-500 text-white', disabled: false },
                   ].map(m => (
-                    <button key={m.key} onClick={() => setPaymentMethod(m.key)}
-                      className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${paymentMethod === m.key ? 'border-primary-400 bg-primary-50' : 'border-border-light hover:border-gray-300'}`}>
+                    <button key={m.key} onClick={() => !m.disabled && setPaymentMethod(m.key)} disabled={m.disabled}
+                      className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${m.disabled ? 'opacity-50 cursor-not-allowed border-border-light' : paymentMethod === m.key ? 'border-primary-400 bg-primary-50' : 'border-border-light hover:border-gray-300'}`}>
                       <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-extrabold ${m.color}`}>{m.name.substring(0, 3).toUpperCase()}</div>
                       <div><div className="text-xs font-semibold text-gray-800">{m.name}</div><div className="text-[10px] text-gray-400">{m.sub}</div></div>
                     </button>

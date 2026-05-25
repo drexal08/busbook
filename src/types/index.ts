@@ -4,12 +4,13 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password: string;
   role: UserRole;
   phone: string;
   companyId?: string;
+  operatorStatus?: 'pending' | 'approved' | 'rejected';
   avatar?: string;
   createdAt: string;
+  password?: string;
 }
 
 export interface Company {
@@ -52,9 +53,9 @@ export interface Trip {
   departureTime: string;
   arrivalTime: string;
   price: number;
-  onlineSeats: number;      // seats allocated for online booking
-  availableSeats: number;   // onlineSeats - bookedSeats.length (derived, stored for queries)
-  totalSeats: number;       // physical bus capacity
+  onlineSeats: number;
+  availableSeats: number;
+  totalSeats: number;
   bookedSeats: number[];
   status: 'scheduled' | 'departed' | 'cancelled';
 }
@@ -96,17 +97,5 @@ export interface Payment {
   createdAt: string;
   bookingId?: string;
   processedAt?: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
-  role: UserRole;
-  phone: string;
-  companyId?: string;
-  operatorStatus?: 'pending' | 'approved' | 'rejected'; // NEW
-  avatar?: string;
-  createdAt: string;
+  failureReason?: string;
 }

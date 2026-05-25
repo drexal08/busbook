@@ -15,8 +15,22 @@ import CompanyDashboard from './pages/CompanyDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import { IconHome } from './components/Icons';
+import { isFirebaseConfigured } from './lib/firebase';
 
 const App: React.FC = () => {
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="min-h-screen bg-surface-secondary flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white border border-border rounded-2xl p-6 text-center shadow-sm">
+          <h1 className="text-lg font-bold text-gray-900 mb-2">Firebase setup required</h1>
+          <p className="text-sm text-gray-500">
+            Add the required `VITE_FIREBASE_*` values from `.env.example` before running or deploying BusBook.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AuthProvider>
       <DataProvider>

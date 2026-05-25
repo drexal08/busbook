@@ -1,4 +1,5 @@
 import { auth, db } from './firebase';
+import { UserRole } from '../types';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,7 +9,14 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
-export async function register(name: string, email: string, password: string, phone: string, role: 'passenger' | 'company') {
+export async function register(
+  name: string,
+  email: string,
+  password: string,
+  phone: string,
+  role: UserRole,
+  companyId?: string
+) {
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   await setDoc(doc(db, 'users', cred.user.uid), {
     id: cred.user.uid,
@@ -16,6 +24,8 @@ export async function register(name: string, email: string, password: string, ph
     email,
     phone,
     role,
+    ...(companyId ? { companyId } : {}),
+    ...(role === 'operator' ? { operatorStatus: 'pending' } : {}),
     createdAt: new Date().toISOString()
   });
   return cred.user;

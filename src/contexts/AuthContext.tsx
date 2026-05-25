@@ -41,9 +41,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const signup = useCallback(async (name: string, email: string, password: string, phone: string, role: UserRole) => {
+  const signup = useCallback(async (name: string, email: string, password: string, phone: string, role: UserRole, companyId?: string) => {
     try {
-      const firebaseUser = await fbRegister(name, email, password, phone, role);
+      const firebaseUser = await fbRegister(name, email, password, phone, role, companyId);
       return { success: true, userId: firebaseUser.uid };
     } catch (e: any) {
       return { success: false, error: e.message || 'Signup failed' };

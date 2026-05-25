@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IconMail, IconLock, IconUser, IconBuilding, IconScan, IconShield } from '../components/Icons';
+import { IconMail, IconLock } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
 import { loginWithGoogle } from '../lib/auth';
 

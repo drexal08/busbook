@@ -45,11 +45,12 @@ exports.paypackWebhook = onRequest(async (req, res) => {
   const event = req.body;
 
   // Only handle processed transactions
-  if (event.kind !== 'transaction:processed') {
+  const eventKind = event.kind || event.event_kind;
+  if (eventKind !== 'transaction:processed') {
     return res.status(200).json({ received: true });
   }
 
-  const txn = event.data;
+  const txn = event.data || event;
   const ref = txn.ref;
   const status = txn.status; // 'successful' or 'failed'
 
@@ -70,51 +71,69 @@ exports.paypackWebhook = onRequest(async (req, res) => {
     }
 
     if (status === 'successful') {
-      const bookingRef = db.collection('bookings').doc();
-      const bookingId = bookingRef.id;
+      await db.runTransaction(async (tx) => {
+        const freshPaymentSnap = await tx.get(paymentRef);
+        const freshPayment = freshPaymentSnap.data();
 
-      // Use a batch so booking + trip update are atomic
-      const batch = db.batch();
+        if (!freshPayment || freshPayment.status !== 'pending') return;
 
-      batch.set(bookingRef, {
-        id: bookingId,
-        tripId: payment.tripId,
-        passengerId: payment.passengerId,
-        companyId: payment.companyId,
-        seatNumber: payment.seatNumber,
-        passengerName: payment.passengerName,
-        passengerPhone: payment.passengerPhone,
-        origin: payment.origin,
-        destination: payment.destination,
-        departureDate: payment.departureDate,
-        departureTime: payment.departureTime,
-        price: payment.amount,
-        status: 'confirmed',
-        qrCode: bookingId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        const tripRef = db.collection('trips').doc(freshPayment.tripId);
+        const tripSnap = await tx.get(tripRef);
 
-      // Update payment record
-      batch.update(paymentRef, {
-        status: 'completed',
-        bookingId: bookingId,
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+        if (!tripSnap.exists) {
+          tx.update(paymentRef, {
+            status: 'failed',
+            failureReason: 'Trip no longer exists',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
 
-      await batch.commit();
-
-      // Decrement trip seat separately (needs a read first)
-      const tripRef = db.collection('trips').doc(payment.tripId);
-      const tripSnap = await tripRef.get();
-      if (tripSnap.exists) {
         const trip = tripSnap.data();
-        const newBooked = [...(trip.bookedSeats || []), payment.seatNumber];
-        await tripRef.update({
+        const bookedSeats = trip.bookedSeats || [];
+
+        if (bookedSeats.includes(freshPayment.seatNumber)) {
+          tx.update(paymentRef, {
+            status: 'failed',
+            failureReason: 'Seat is already booked',
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+
+        const bookingRef = db.collection('bookings').doc();
+        const bookingId = bookingRef.id;
+        const newBooked = [...bookedSeats, freshPayment.seatNumber];
+
+        tx.set(bookingRef, {
+          id: bookingId,
+          tripId: freshPayment.tripId,
+          passengerId: freshPayment.passengerId,
+          companyId: freshPayment.companyId,
+          seatNumber: freshPayment.seatNumber,
+          passengerName: freshPayment.passengerName,
+          passengerPhone: freshPayment.passengerPhone,
+          origin: freshPayment.origin,
+          destination: freshPayment.destination,
+          departureDate: freshPayment.departureDate,
+          departureTime: freshPayment.departureTime,
+          price: freshPayment.amount,
+          status: 'confirmed',
+          qrCode: bookingId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        tx.update(tripRef, {
           bookedSeats: newBooked,
           availableSeats: trip.onlineSeats - newBooked.length,
         });
-      }
 
+        tx.update(paymentRef, {
+          status: 'completed',
+          bookingId,
+          processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      });
     } else {
       // Payment failed
       await paymentRef.update({
