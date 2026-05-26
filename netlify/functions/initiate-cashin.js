@@ -38,7 +38,12 @@ async function getPaypackToken() {
 function json(statusCode, body) {
   return {
     statusCode,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS'
+    },
     body: JSON.stringify(body),
   };
 }
@@ -113,6 +118,11 @@ async function completeTestPayment(ref) {
 }
 
 exports.handler = async (event) => {
+  // Handle CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return json(200, {});
+  }
+
   if (event.httpMethod !== 'POST') {
     return json(405, { error: 'Method not allowed' });
   }
@@ -173,7 +183,10 @@ exports.handler = async (event) => {
     const route = routeSnap.data();
     let ref = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    if (process.env.PAYMENT_TEST_MODE !== 'true') {
+    // Check if test mode is enabled
+    const isTestMode = process.env.PAYMENT_TEST_MODE === 'true';
+
+    if (!isTestMode) {
       const token = await getPaypackToken();
 
       const cashinRes = await fetch(`${PAYPACK_API}/transactions/cashin`, {
@@ -219,14 +232,16 @@ exports.handler = async (event) => {
       departureDate: trip.date,
       departureTime: trip.departureTime,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      testMode: process.env.PAYMENT_TEST_MODE === 'true',
+      testMode: isTestMode,
     });
 
-    if (process.env.PAYMENT_TEST_MODE === 'true') {
+    // Auto-complete payment in test mode
+    if (isTestMode) {
+      console.log(`🧪 TEST MODE: Auto-completing payment ${ref}`);
       await completeTestPayment(ref);
     }
 
-    return json(200, { ref });
+    return json(200, { ref, testMode: isTestMode });
   } catch (err) {
     console.error('Initiate cashin error:', err);
     return json(500, { error: err.message || 'Payment initiation failed' });
