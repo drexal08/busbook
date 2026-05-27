@@ -39,91 +39,96 @@ const BookingPage: React.FC = () => {
   }, [paymentRef]);
 
   // DYNAMIC SEAT MAP ENGINE: Automatically configures structure based on any total capacity
-  const layoutRows = useMemo(() => {
-    if (!bus || !trip) return [];
+const layoutRows = useMemo(() => {
+  if (!bus || !trip) return [];
+  
+  const N = bus.totalSeats;
+  const remainder = N % 4;
+  const fullRowsCount = Math.floor(N / 4);
+  const matrix: Array<Array<{
+    id: string;
+    number?: number;
+    label: string;
+    type: 'passenger' | 'foldable' | 'driver' | 'empty';
+    booked: boolean;
+  }>> = [];
+  
+  let currentSeatNum = 1;
+  
+  // 1. FRONT ROW: Driver on the LEFT (Rwanda standard), remainder passenger seats fill on the right
+  const frontRow = [
+    {
+      id: 'driver-slot',
+      label: 'Drv',
+      type: 'driver' as const,
+      booked: false
+    },
+    {
+      id: 'front-r1',
+      number: remainder >= 1 ? currentSeatNum : undefined,
+      label: remainder >= 1 ? String(currentSeatNum++) : '',
+      type: remainder >= 1 ? ('passenger' as const) : ('empty' as const),
+      booked: remainder >= 1 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+    },
+    {
+      id: 'front-r2',
+      number: remainder >= 2 ? currentSeatNum : undefined,
+      label: remainder >= 2 ? String(currentSeatNum++) : '',
+      type: remainder >= 2 ? ('passenger' as const) : ('empty' as const),
+      booked: remainder >= 2 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+    },
+    {
+      id: 'front-r3',
+      number: remainder >= 3 ? currentSeatNum : undefined,
+      label: remainder >= 3 ? String(currentSeatNum++) : '',
+      type: remainder >= 3 ? ('passenger' as const) : ('empty' as const),
+      booked: remainder >= 3 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+    }
+  ];
+  matrix.push(frontRow);
+  
+  // 2. BACK ROWS: Rows of 4 (2 left, 1 foldable middle, 1 extreme right)
+  for (let r = 0; r < fullRowsCount; r++) {
+    const leftSeat1Num = currentSeatNum++;
+    const leftSeat2Num = currentSeatNum++;
+    const foldableSeatNum = currentSeatNum++;
+    const rightSeatNum = currentSeatNum++;
     
-    const N = bus.totalSeats;
-    const remainder = N % 4;
-    const fullRowsCount = Math.floor(N / 4);
-    const matrix: Array<Array<{
-      id: string;
-      number?: number;
-      label: string;
-      type: 'passenger' | 'foldable' | 'driver' | 'empty';
-      booked: boolean;
-    }>> = [];
-    
-    let currentSeatNum = 1;
-    
-    // 1. FRONT ROW: Driver on the right, remainder passenger seats fill on the left
-    const frontRow = [
+    const rowSeats = [
       {
-        id: 'front-l1',
-        number: remainder >= 1 ? currentSeatNum : undefined,
-        label: remainder >= 1 ? String(currentSeatNum++) : '',
-        type: remainder >= 1 ? ('passenger' as const) : ('empty' as const),
-        booked: remainder >= 1 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+        id: `row-${r}-l1`,
+        number: leftSeat1Num,
+        label: String(leftSeat1Num),
+        type: 'passenger' as const,
+        booked: trip.bookedSeats.includes(leftSeat1Num)
       },
       {
-        id: 'front-l2',
-        number: remainder >= 2 ? currentSeatNum : undefined,
-        label: remainder >= 2 ? String(currentSeatNum++) : '',
-        type: remainder >= 2 ? ('passenger' as const) : ('empty' as const),
-        booked: remainder >= 2 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+        id: `row-${r}-l2`,
+        number: leftSeat2Num,
+        label: String(leftSeat2Num),
+        type: 'passenger' as const,
+        booked: trip.bookedSeats.includes(leftSeat2Num)
       },
       {
-        id: 'front-m',
-        number: remainder >= 3 ? currentSeatNum : undefined,
-        label: remainder >= 3 ? String(currentSeatNum++) : '',
-        type: remainder >= 3 ? ('passenger' as const) : ('empty' as const),
-        booked: remainder >= 3 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+        id: `row-${r}-m`,
+        number: foldableSeatNum,
+        label: `${foldableSeatNum}F`, // Appends an 'F' to visually indicate Foldable in the map
+        type: 'foldable' as const,
+        booked: trip.bookedSeats.includes(foldableSeatNum)
       },
       {
-        id: 'driver-slot',
-        label: 'Drv',
-        type: 'driver' as const,
-        booked: false
+        id: `row-${r}-r`,
+        number: rightSeatNum,
+        label: String(rightSeatNum),
+        type: 'passenger' as const,
+        booked: trip.bookedSeats.includes(rightSeatNum)
       }
     ];
-    matrix.push(frontRow);
-    
-    // 2. BACK ROWS: Rows of 4 (2 left, 1 foldable middle, 1 extreme right)
-    for (let r = 0; r < fullRowsCount; r++) {
-      const rowSeats = [
-        {
-          id: `row-${r}-l1`,
-          number: currentSeatNum,
-          label: String(currentSeatNum++),
-          type: 'passenger' as const,
-          booked: trip.bookedSeats.includes(currentSeatNum - 1)
-        },
-        {
-          id: `row-${r}-l2`,
-          number: currentSeatNum,
-          label: String(currentSeatNum++),
-          type: 'passenger' as const,
-          booked: trip.bookedSeats.includes(currentSeatNum - 1)
-        },
-        {
-          id: `row-${r}-m`,
-          number: currentSeatNum,
-          label: `${currentSeatNum}F`, // Appends an 'F' to visually indicate Foldable in the map
-          type: 'foldable' as const,
-          booked: trip.bookedSeats.includes(currentSeatNum - 1)
-        },
-        {
-          id: `row-${r}-r`,
-          number: currentSeatNum,
-          label: String(currentSeatNum++),
-          type: 'passenger' as const,
-          booked: trip.bookedSeats.includes(currentSeatNum - 1)
-        }
-      ];
-      matrix.push(rowSeats);
-    }
-    
-    return matrix;
-  }, [bus, trip]);
+    matrix.push(rowSeats);
+  }
+  
+  return matrix;
+}, [bus, trip]);
 
   if (!trip || !route || !bus) {
     return (
