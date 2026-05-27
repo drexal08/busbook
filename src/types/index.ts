@@ -44,6 +44,23 @@ export interface Route {
   duration: string;
 }
 
+export interface TripTemplate {
+  id: string;
+  companyId: string;
+  routeId: string;
+  busId: string;
+  departureTime: string;
+  arrivalTime: string;
+  price: number;
+  onlineSeats: number;
+  totalSeats: number;
+  daysOfWeek: number[];
+  sellDaysAhead: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Trip {
   id: string;
   routeId: string;
@@ -58,6 +75,10 @@ export interface Trip {
   totalSeats: number;
   bookedSeats: number[];
   status: 'scheduled' | 'departed' | 'cancelled';
+  templateId?: string;
+  source?: 'template' | 'manual';
+  cancelledAt?: string;
+  cancelReason?: string;
 }
 
 export interface Booking {

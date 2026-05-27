@@ -2,9 +2,9 @@ import { db } from './firebase';
 import {
   collection, doc, addDoc, updateDoc, getDocs,
   query, where, onSnapshot, serverTimestamp,
-  setDoc, getDoc
+  setDoc, getDoc, deleteDoc
 } from 'firebase/firestore';
-import { Company, Trip, Route, Bus, Booking } from '../types';
+import { Company, Trip, Route, Bus, Booking, TripTemplate } from '../types';
 
 // ─── Companies ───────────────────────────────────────────────
 export async function fetchCompanies(): Promise<Company[]> {
@@ -74,6 +74,16 @@ export async function createTrip(data: Omit<Trip, 'id'>): Promise<string> {
   return ref.id;
 }
 
+export async function createTripWithId(tripId: string, data: Omit<Trip, 'id'>): Promise<void> {
+  await setDoc(doc(db, 'trips', tripId), { ...data });
+}
+
+export async function cancelTrip(tripId: string, reason?: string): Promise<void> {
+  const payload: Record<string, unknown> = { status: 'cancelled', cancelledAt: serverTimestamp() };
+  if (reason && reason.trim()) payload.cancelReason = reason.trim();
+  await updateDoc(doc(db, 'trips', tripId), payload);
+}
+
 export async function decrementTripSeat(tripId: string, seatNumber: number): Promise<void> {
   const ref = doc(db, 'trips', tripId);
   const snap = await getDoc(ref);
@@ -92,6 +102,36 @@ export async function fetchCompanyBookings(companyId: string): Promise<Booking[]
   const q = query(collection(db, 'bookings'), where('companyId', '==', companyId));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...(d.data() as object) } as Booking));
+}
+
+export async function fetchTripTemplates(companyId?: string): Promise<TripTemplate[]> {
+  const q = companyId
+    ? query(collection(db, 'tripTemplates'), where('companyId', '==', companyId))
+    : collection(db, 'tripTemplates');
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as object) } as TripTemplate));
+}
+
+export async function createTripTemplate(
+  data: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'tripTemplates'), {
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function updateTripTemplate(
+  templateId: string,
+  data: Partial<Omit<TripTemplate, 'id' | 'companyId' | 'createdAt'>>
+): Promise<void> {
+  await updateDoc(doc(db, 'tripTemplates', templateId), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function deleteTripTemplate(templateId: string): Promise<void> {
+  await deleteDoc(doc(db, 'tripTemplates', templateId));
 }
 
 export function subscribeToCompanyTrips(
