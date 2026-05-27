@@ -1,12 +1,31 @@
-const admin = require('firebase-admin');
+import admin from 'firebase-admin';
+
+function getRequiredEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function getServiceAccount() {
+  const projectId = getRequiredEnv('FIREBASE_PROJECT_ID');
+  const clientEmail = getRequiredEnv('FIREBASE_CLIENT_EMAIL');
+  const privateKeyRaw = getRequiredEnv('FIREBASE_PRIVATE_KEY');
+  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
+
+  if (!privateKey.includes('BEGIN PRIVATE KEY')) {
+    throw new Error(
+      'FIREBASE_PRIVATE_KEY is not valid. Paste the service account private_key string and keep newlines escaped as \\n.'
+    );
+  }
+
+  return { projectId, clientEmail, privateKey };
+}
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
+    credential: admin.credential.cert(getServiceAccount()),
   });
 }
 
@@ -117,7 +136,7 @@ async function completeTestPayment(ref) {
   });
 }
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return json(200, {});
