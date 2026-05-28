@@ -1,10 +1,86 @@
 const functions = require('firebase-functions/v2/https');
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function kigaliTodayUtcMidnightMs(nowMs) {
+  const offsetMs = 2 * 60 * 60 * 1000;
+  const kigali = new Date(nowMs + offsetMs);
+  const y = kigali.getUTCFullYear();
+  const m = kigali.getUTCMonth();
+  const d = kigali.getUTCDate();
+  return Date.UTC(y, m, d);
+}
+
+function dateStringFromUtcMs(ms) {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+function dayOfWeekMon1Sun7FromUtcMs(ms) {
+  const d = new Date(ms);
+  const dowSun0 = d.getUTCDay();
+  return ((dowSun0 + 6) % 7) + 1;
+}
+
+function deterministicTripId(templateId, date) {
+  return `${templateId}_${date}`;
+}
+
+exports.generateTripsDaily = onSchedule(
+  { schedule: '5 0 * * *', timeZone: 'Africa/Kigali' },
+  async () => {
+    const nowMs = Date.now();
+    const startMs = kigaliTodayUtcMidnightMs(nowMs);
+    const templatesSnap = await db.collection('tripTemplates').where('active', '==', true).get();
+
+    for (const docSnap of templatesSnap.docs) {
+      const t = docSnap.data() || {};
+      const templateId = docSnap.id;
+      const daysOfWeek = Array.isArray(t.daysOfWeek) ? t.daysOfWeek : [];
+      const horizon = Number.isFinite(t.sellDaysAhead) ? Math.max(1, Math.min(30, t.sellDaysAhead)) : 7;
+
+      for (let i = 0; i < horizon; i++) {
+        const dayMs = startMs + i * 24 * 60 * 60 * 1000;
+        const dow = dayOfWeekMon1Sun7FromUtcMs(dayMs);
+        if (daysOfWeek.length && !daysOfWeek.includes(dow)) continue;
+
+        const date = dateStringFromUtcMs(dayMs);
+        const tripId = deterministicTripId(templateId, date);
+        const tripRef = db.collection('trips').doc(tripId);
+        const existing = await tripRef.get();
+        if (existing.exists) continue;
+
+        const onlineSeats = Number(t.onlineSeats) || 0;
+        await tripRef.set({
+          routeId: t.routeId,
+          companyId: t.companyId,
+          busId: t.busId,
+          date,
+          departureTime: t.departureTime,
+          arrivalTime: t.arrivalTime,
+          price: Number(t.price) || 0,
+          onlineSeats,
+          totalSeats: Number(t.totalSeats) || Number(t.onlineSeats) || 0,
+          bookedSeats: [],
+          availableSeats: onlineSeats,
+          status: 'scheduled',
+          templateId,
+          source: 'template',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+  }
+);
 
 exports.paypackWebhook = onRequest(async (req, res) => {
   // Paypack pings with HEAD first to verify URL is alive

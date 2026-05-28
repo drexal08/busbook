@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Company, Trip, Booking, Route, Bus } from '../types';
+import { Company, Trip, Booking, Route, Bus, TripTemplate } from '../types';
 import {
   fetchCompanies, fetchRoutes, fetchBuses, fetchTrips,
   createCompany as fbCreateCompany,
@@ -7,6 +7,11 @@ import {
   createRoute as fbCreateRoute,
   createBus as fbCreateBus,
   createTrip as fbCreateTrip,
+  fetchTripTemplates as fbFetchTripTemplates,
+  createTripTemplate as fbCreateTripTemplate,
+  updateTripTemplate as fbUpdateTripTemplate,
+  deleteTripTemplate as fbDeleteTripTemplate,
+  cancelTrip as fbCancelTrip,
   updateCompanyStatus,
   decrementTripSeat,
   fetchCompanyBookings
@@ -16,6 +21,7 @@ import { createBooking as fbCreateBooking, validateBooking as fbValidateBooking 
 import { onSnapshot, collection } from 'firebase/firestore'; 
 // FIX 2: Imported your Firestore instance 'db'
 import { db } from '../lib/firebase'; 
+import { ensureUpcomingTripsFromTemplates } from '../lib/tripGeneration';
 
 interface DataContextType {
   companies: Company[];
@@ -23,11 +29,13 @@ interface DataContextType {
   bookings: Booking[];
   routes: Route[];
   buses: Bus[];
+  tripTemplates: TripTemplate[];
   loading: boolean;
   refreshCompanyData: (companyId: string) => Promise<void>;
   searchTrips: (origin: string, destination: string, date: string) => Trip[];
   createBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
   cancelBooking: (bookingId: string) => void;
+  cancelTrip: (tripId: string, reason?: string) => Promise<void>;
   approveCompany: (companyId: string) => Promise<void>;
   rejectCompany: (companyId: string) => Promise<void>;
   addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Promise<string>;
@@ -35,12 +43,20 @@ interface DataContextType {
   addRoute: (route: Omit<Route, 'id'>) => Promise<void>;
   addBus: (bus: Omit<Bus, 'id'>) => Promise<void>;
   addTrip: (trip: Omit<Trip, 'id' | 'bookedSeats' | 'availableSeats'>) => Promise<Trip>;
+  addTripTemplate: (template: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateTripTemplate: (
+    templateId: string,
+    data: Partial<Omit<TripTemplate, 'id' | 'companyId' | 'createdAt'>>
+  ) => Promise<void>;
+  deleteTripTemplate: (templateId: string) => Promise<void>;
+  generateUpcomingTrips: (companyId: string) => Promise<{ created: number }>;
   validateTicket: (qrCode: string) => Promise<{ valid: boolean; booking?: Booking; error?: string }>;
   getPassengerBookings: (passengerId: string) => Booking[];
   getCompanyTrips: (companyId: string) => Trip[];
   getCompanyBookings: (companyId: string) => Booking[];
   getCompanyRoutes: (companyId: string) => Route[];
   getCompanyBuses: (companyId: string) => Bus[];
+  getCompanyTripTemplates: (companyId: string) => TripTemplate[];
   getCompanyName: (companyId: string) => string;
   getRouteInfo: (routeId: string) => Route | undefined;
   getBusInfo: (busId: string) => Bus | undefined;
@@ -54,6 +70,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [buses, setBuses] = useState<Bus[]>([]);
+  const [tripTemplates, setTripTemplates] = useState<TripTemplate[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Real-time bookings listener
@@ -71,16 +88,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const load = async () => {
       setLoading(true);
       try {
-        const [c, r, b, t] = await Promise.all([
+        const [c, r, b, t, tt] = await Promise.all([
           fetchCompanies(),
           fetchRoutes(),
           fetchBuses(),
-          fetchTrips()
+          fetchTrips(),
+          fbFetchTripTemplates()
         ]);
         setCompanies(c);
         setRoutes(r);
         setBuses(b);
         setTrips(t);
+        setTripTemplates(tt);
       } catch (e) {
         console.error('DataContext load error:', e);
       } finally {
@@ -91,16 +110,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const refreshCompanyData = useCallback(async (companyId: string) => {
-    const [r, b, t, bk] = await Promise.all([
+    const [r, b, t, bk, tt] = await Promise.all([
       fetchRoutes(companyId),
       fetchBuses(companyId),
       fetchTrips({ companyId }),
-      fetchCompanyBookings(companyId)
+      fetchCompanyBookings(companyId),
+      fbFetchTripTemplates(companyId)
     ]);
     setRoutes(prev => [...prev.filter(x => x.companyId !== companyId), ...r]);
     setBuses(prev => [...prev.filter(x => x.companyId !== companyId), ...b]);
     setTrips(prev => [...prev.filter(x => x.companyId !== companyId), ...t]);
     setBookings(prev => [...prev.filter(x => x.companyId !== companyId), ...bk]);
+    setTripTemplates(prev => [...prev.filter(x => x.companyId !== companyId), ...tt]);
   }, []);
 
   const searchTrips = useCallback((origin: string, destination: string, date: string) => {
@@ -193,12 +214,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...tripData,
       bookedSeats: [],
       availableSeats: tripData.onlineSeats,
+      source: 'manual',
     };
     const id = await fbCreateTrip(newTrip);
     const trip = { ...newTrip, id };
     setTrips(prev => [...prev, trip]);
     return trip;
   }, []);
+
+  const cancelTrip = useCallback(async (tripId: string, reason?: string) => {
+    await fbCancelTrip(tripId, reason);
+    setTrips(prev => prev.map(t => t.id === tripId ? {
+      ...t,
+      status: 'cancelled',
+      ...(reason ? { cancelReason: reason } : {}),
+      cancelledAt: new Date().toISOString(),
+    } : t));
+  }, []);
+
+  const addTripTemplate = useCallback(async (template: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const id = await fbCreateTripTemplate(template);
+    setTripTemplates(prev => [...prev, { ...template, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+    return id;
+  }, []);
+
+  const updateTripTemplate = useCallback(async (
+    templateId: string,
+    data: Partial<Omit<TripTemplate, 'id' | 'companyId' | 'createdAt'>>
+  ) => {
+    await fbUpdateTripTemplate(templateId, data);
+    setTripTemplates(prev => prev.map(t => t.id === templateId ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
+  }, []);
+
+  const deleteTripTemplate = useCallback(async (templateId: string) => {
+    await fbDeleteTripTemplate(templateId);
+    setTripTemplates(prev => prev.filter(t => t.id !== templateId));
+  }, []);
+
+  const generateUpcomingTrips = useCallback(async (companyId: string) => {
+    const templates = tripTemplates.filter(t => t.companyId === companyId && t.active);
+    const result = await ensureUpcomingTripsFromTemplates(templates);
+    if (result.created > 0) {
+      const t = await fetchTrips({ companyId });
+      setTrips(prev => [...prev.filter(x => x.companyId !== companyId), ...t]);
+    }
+    return result;
+  }, [tripTemplates]);
 
   const validateTicket = useCallback(async (qrCode: string) => {
     const result = await fbValidateBooking(qrCode);
@@ -220,6 +281,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getCompanyBuses = useCallback((companyId: string) =>
     buses.filter(b => b.companyId === companyId), [buses]);
 
+  const getCompanyTripTemplates = useCallback((companyId: string) =>
+    tripTemplates.filter(t => t.companyId === companyId), [tripTemplates]);
+
   const getCompanyName = useCallback((companyId: string) =>
     companies.find(c => c.id === companyId)?.name || 'Unknown', [companies]);
 
@@ -231,13 +295,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <DataContext.Provider value={{
-      companies, trips, bookings, routes, buses, loading,
+      companies, trips, bookings, routes, buses, tripTemplates, loading,
       refreshCompanyData,
-      searchTrips, createBooking, cancelBooking,
+      searchTrips, createBooking, cancelBooking, cancelTrip,
       approveCompany, rejectCompany, addCompany, addCompanyWithId,
-      addRoute, addBus, addTrip, validateTicket,
+      addRoute, addBus, addTrip,
+      addTripTemplate, updateTripTemplate, deleteTripTemplate, generateUpcomingTrips,
+      validateTicket,
       getPassengerBookings, getCompanyTrips, getCompanyBookings,
-      getCompanyRoutes, getCompanyBuses,
+      getCompanyRoutes, getCompanyBuses, getCompanyTripTemplates,
       getCompanyName, getRouteInfo, getBusInfo
     }}>
       {children}
