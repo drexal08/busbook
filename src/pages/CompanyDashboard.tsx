@@ -9,12 +9,28 @@ import DatePicker from '../components/DatePicker';
 import { db } from '../lib/firebase';
 import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'; 
 import { IconCheck, IconX } from '../components/Icons';
-import { User } from '../types';
+import { TripTemplate, User } from '../types';
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { companies, getCompanyTrips, getCompanyBookings, getCompanyRoutes, getCompanyBuses, addRoute, addBus, addTrip, getRouteInfo } = useData();
+  const {
+    companies,
+    getCompanyTrips,
+    getCompanyBookings,
+    getCompanyRoutes,
+    getCompanyBuses,
+    getCompanyTripTemplates,
+    addRoute,
+    addBus,
+    addTrip,
+    cancelTrip,
+    addTripTemplate,
+    updateTripTemplate,
+    deleteTripTemplate,
+    generateUpcomingTrips,
+    getRouteInfo
+  } = useData();
   const [tab, setTab] = useState<string>('overview');
   const [msg, setMsg] = useState('');
   const [nrOrigin, setNrOrigin] = useState('');
@@ -25,14 +41,24 @@ const CompanyDashboard: React.FC = () => {
   const [nbPlate, setNbPlate] = useState('');
   const [nbSeats, setNbSeats] = useState('49');
   const [ntRoute, setNtRoute] = useState('');
-const [ntBus, setNtBus] = useState('');
-const [ntDate, setNtDate] = useState('');
-const [ntDep, setNtDep] = useState('');
-const [ntArr, setNtArr] = useState('');
-const [ntPrice, setNtPrice] = useState('');
-const [ntOnlineSeats, setNtOnlineSeats] = useState('');
-const [operators, setOperators] = useState<User[]>([]);
-const [codeCopied, setCodeCopied] = useState(false);
+  const [ntBus, setNtBus] = useState('');
+  const [ntDate, setNtDate] = useState('');
+  const [ntDep, setNtDep] = useState('');
+  const [ntArr, setNtArr] = useState('');
+  const [ntPrice, setNtPrice] = useState('');
+  const [ntOnlineSeats, setNtOnlineSeats] = useState('');
+  const [operators, setOperators] = useState<User[]>([]);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [tripView, setTripView] = useState<'upcoming' | 'past'>('upcoming');
+  const [tsRoute, setTsRoute] = useState('');
+  const [tsBus, setTsBus] = useState('');
+  const [tsDep, setTsDep] = useState('');
+  const [tsArr, setTsArr] = useState('');
+  const [tsPrice, setTsPrice] = useState('');
+  const [tsOnlineSeats, setTsOnlineSeats] = useState('');
+  const [tsSellDaysAhead, setTsSellDaysAhead] = useState('7');
+  const [tsDaysOfWeek, setTsDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   const cid = user?.companyId || '';
   const company = companies.find(c => c.id === cid);
@@ -40,6 +66,7 @@ const [codeCopied, setCodeCopied] = useState(false);
   const bookings = getCompanyBookings(cid);
   const routes = getCompanyRoutes(cid);
   const buses = getCompanyBuses(cid);
+  const templates = getCompanyTripTemplates(cid);
   const today = new Date().toISOString().split('T')[0];
   const revenue = bookings.filter(b => b.status !== 'cancelled').reduce((s, b) => s + b.price, 0);
 
@@ -58,6 +85,11 @@ const [codeCopied, setCodeCopied] = useState(false);
       setOperators(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as User)));
     });
   }, [cid]);
+
+  useEffect(() => {
+    if (!cid) return;
+    generateUpcomingTrips(cid).catch(() => {});
+  }, [cid, generateUpcomingTrips]);
 
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
   const copyCompanyCode = async () => {
@@ -88,14 +120,61 @@ const [codeCopied, setCodeCopied] = useState(false);
   setTab('trips');
 };
 
+  const resetTemplateForm = () => {
+    setTsRoute('');
+    setTsBus('');
+    setTsDep('');
+    setTsArr('');
+    setTsPrice('');
+    setTsOnlineSeats('');
+    setTsSellDaysAhead('7');
+    setTsDaysOfWeek([1, 2, 3, 4, 5, 6, 7]);
+    setEditingTemplateId(null);
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cid) return;
+    if (!tsRoute || !tsBus || !tsDep || !tsArr || !tsPrice || !tsOnlineSeats) return;
+    if (!tsDaysOfWeek.length) return;
+
+    const totalSeats = buses.find(b => b.id === tsBus)?.totalSeats || 49;
+    const payload: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
+      companyId: cid,
+      routeId: tsRoute,
+      busId: tsBus,
+      departureTime: tsDep,
+      arrivalTime: tsArr,
+      price: parseInt(tsPrice),
+      onlineSeats: parseInt(tsOnlineSeats),
+      totalSeats,
+      daysOfWeek: tsDaysOfWeek.slice().sort((a, b) => a - b),
+      sellDaysAhead: parseInt(tsSellDaysAhead) || 7,
+      active: true,
+    };
+
+    if (editingTemplateId) {
+      await updateTripTemplate(editingTemplateId, payload);
+      flash('Schedule updated');
+    } else {
+      await addTripTemplate(payload);
+      flash('Schedule created');
+    }
+
+    await generateUpcomingTrips(cid);
+    resetTemplateForm();
+    setTab('schedules');
+  };
+
   if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
 
   const tabs = [
   { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
   { key: 'routes', label: 'Routes', icon: <IconRoute size={15} /> },
   { key: 'buses', label: 'Buses', icon: <IconBus size={15} /> },
+  { key: 'schedules', label: 'Schedules', icon: <IconCalendar size={15} /> },
   { key: 'trips', label: 'Trips', icon: <IconCalendar size={15} /> },
-  { key: 'operators', label: 'Operators', icon: <IconScan size={15} /> }, // NEW
+  { key: 'operators', label: 'Operators', icon: <IconScan size={15} /> },
   { key: 'bookings', label: 'Bookings', icon: <IconTicket size={15} /> },
 ];
 
@@ -233,22 +312,211 @@ const [codeCopied, setCodeCopied] = useState(false);
           </div>
         )}
 
+        {tab === 'schedules' && (
+          <div>
+            <div className="flex justify-between items-center mb-4 gap-2">
+              <h3 className="font-semibold text-gray-900 text-sm">Schedules ({templates.length})</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const r = await generateUpcomingTrips(cid);
+                    flash(r.created ? `Generated ${r.created} trips` : 'No new trips to generate');
+                  }}
+                  className="bg-surface-secondary text-gray-600 px-3.5 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
+                >
+                  Generate trips
+                </button>
+                <button
+                  onClick={() => { resetTemplateForm(); setTab('addSchedule'); }}
+                  className="bg-primary-600 text-white px-3.5 py-2 rounded-lg text-[11px] font-semibold flex items-center gap-1 hover:bg-primary-700"
+                >
+                  <IconPlus size={13} /> Add
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {templates.map(t => {
+                const r = getRouteInfo(t.routeId);
+                const busLabel = buses.find(b => b.id === t.busId)?.name || 'Bus';
+                return (
+                  <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
+                        {r?.origin} <IconArrowRight size={11} className="text-gray-300" /> {r?.destination}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${t.active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-gray-100 text-gray-500 border-border-light'}`}>
+                          {t.active ? 'active' : 'inactive'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {t.departureTime}–{t.arrivalTime} · {busLabel} · {t.onlineSeats}/{t.totalSeats} online · {t.price.toLocaleString()} RWF · {t.sellDaysAhead} days ahead
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={async () => {
+                          await updateTripTemplate(t.id, { active: !t.active });
+                          flash(t.active ? 'Schedule paused' : 'Schedule activated');
+                        }}
+                        className="bg-surface-secondary text-gray-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
+                      >
+                        {t.active ? 'Pause' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingTemplateId(t.id);
+                          setTsRoute(t.routeId);
+                          setTsBus(t.busId);
+                          setTsDep(t.departureTime);
+                          setTsArr(t.arrivalTime);
+                          setTsPrice(String(t.price));
+                          setTsOnlineSeats(String(t.onlineSeats));
+                          setTsSellDaysAhead(String(t.sellDaysAhead || 7));
+                          setTsDaysOfWeek(Array.isArray(t.daysOfWeek) ? t.daysOfWeek : [1,2,3,4,5,6,7]);
+                          setTab('addSchedule');
+                        }}
+                        className="bg-surface-secondary text-gray-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm('Delete this schedule?')) return;
+                          await deleteTripTemplate(t.id);
+                          flash('Schedule deleted');
+                        }}
+                        className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-red-100"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {templates.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No schedules</div>}
+            </div>
+          </div>
+        )}
+
+        {tab === 'addSchedule' && (
+          <div className="bg-white rounded-xl border border-border p-6 max-w-lg">
+            <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-1.5"><IconPlus size={15} /> {editingTemplateId ? 'Edit schedule' : 'Add schedule'}</h3>
+            <form onSubmit={handleSaveTemplate} className="space-y-3">
+              <Select options={routeOpts} value={tsRoute} onChange={setTsRoute} label="Route" placeholder="Select route" required />
+              <Select options={busOpts} value={tsBus} onChange={setTsBus} label="Bus" placeholder="Select bus" required />
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required /></div>
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required /></div>
+              </div>
+              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={tsPrice} onChange={e => setTsPrice(e.target.value)} className={field} required /></div>
+              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input type="number" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required /></div>
+              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input type="number" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required /></div>
+              <div>
+                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">Days of week</label>
+                <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-700">
+                  {[
+                    { v: 1, l: 'Monday' },
+                    { v: 2, l: 'Tuesday' },
+                    { v: 3, l: 'Wednesday' },
+                    { v: 4, l: 'Thursday' },
+                    { v: 5, l: 'Friday' },
+                    { v: 6, l: 'Saturday' },
+                    { v: 7, l: 'Sunday' },
+                  ].map(d => (
+                    <label key={d.v} className="flex items-center gap-2 bg-surface-secondary border border-border-light rounded-xl px-3 py-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tsDaysOfWeek.includes(d.v)}
+                        onChange={() => setTsDaysOfWeek(prev => prev.includes(d.v) ? prev.filter(x => x !== d.v) : [...prev, d.v])}
+                      />
+                      <span className="font-medium">{d.l}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">{editingTemplateId ? 'Save changes' : 'Create schedule'}</button>
+                <button
+                  type="button"
+                  onClick={() => { resetTemplateForm(); setTab('schedules'); }}
+                  className="bg-surface-secondary text-gray-600 px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-surface-tertiary transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {/* Trips list */}
         {tab === 'trips' && (
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-gray-900 text-sm">Trips ({trips.length})</h3>
-              <button onClick={() => setTab('addTrip')} className="bg-primary-600 text-white px-3.5 py-2 rounded-lg text-[11px] font-semibold flex items-center gap-1 hover:bg-primary-700"><IconPlus size={13} /> Add</button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTripView('upcoming')}
+                  className={`px-3.5 py-2 rounded-lg text-[11px] font-semibold border ${tripView === 'upcoming' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-border hover:bg-surface-secondary'}`}
+                >
+                  Upcoming
+                </button>
+                <button
+                  onClick={() => setTripView('past')}
+                  className={`px-3.5 py-2 rounded-lg text-[11px] font-semibold border ${tripView === 'past' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-border hover:bg-surface-secondary'}`}
+                >
+                  Past
+                </button>
+                <button
+                  onClick={() => setTab('addTrip')}
+                  className="bg-primary-600 text-white px-3.5 py-2 rounded-lg text-[11px] font-semibold flex items-center gap-1 hover:bg-primary-700"
+                >
+                  <IconPlus size={13} /> One-time trip
+                </button>
+              </div>
             </div>
-            <div className="space-y-2">{trips.sort((a,b) => a.date.localeCompare(b.date)).map(t => {
+            <div className="space-y-2">{trips
+              .filter(t => tripView === 'upcoming' ? t.date >= today : t.date < today)
+              .sort((a,b) => a.date.localeCompare(b.date))
+              .map(t => {
               const r = getRouteInfo(t.routeId);
               return (
-                <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between">
+                <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">{r?.origin} <IconArrowRight size={11} className="text-gray-300" /> {r?.destination}</div>
                     <div className="text-[11px] text-gray-400 mt-0.5">{t.date} · {t.departureTime}–{t.arrivalTime} · {t.availableSeats}/{t.totalSeats} seats · {t.price.toLocaleString()} RWF</div>
                   </div>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.status === 'scheduled' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>{t.status}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {t.status === 'scheduled' && (
+                      <>
+                        <button
+                          onClick={async () => {
+                            const reason = window.prompt('Cancel reason (optional)') || '';
+                            await cancelTrip(t.id, reason);
+                            flash('Trip cancelled');
+                          }}
+                          className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-red-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            setNtRoute(t.routeId);
+                            setNtBus(t.busId);
+                            setNtDate(t.date);
+                            setNtDep(t.departureTime);
+                            setNtArr(t.arrivalTime);
+                            setNtPrice(String(t.price));
+                            setNtOnlineSeats(String(t.onlineSeats));
+                            setTab('addTrip');
+                          }}
+                          className="bg-surface-secondary text-gray-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
+                        >
+                          Replace
+                        </button>
+                      </>
+                    )}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.status === 'scheduled' ? 'bg-emerald-50 text-emerald-600' : t.status === 'cancelled' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'}`}>{t.status}</span>
+                  </div>
                 </div>
               );
             })}{trips.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No trips</div>}</div>
