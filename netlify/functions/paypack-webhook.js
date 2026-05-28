@@ -41,15 +41,6 @@ function getServiceAccount() {
   return { projectId, clientEmail, privateKey };
 }
 
-// Initialize Firebase Admin only once
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(getServiceAccount()),
-  });
-}
-
-const db = admin.firestore();
-
 export const handler = async (event) => {
   // Paypack pings with HEAD first
   if (event.httpMethod === 'HEAD') {
@@ -95,6 +86,12 @@ export const handler = async (event) => {
   const status = txn.status;
 
   try {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(getServiceAccount()),
+      });
+    }
+    const db = admin.firestore();
     const paymentRef = db.collection('payments').doc(ref);
     const paymentSnap = await paymentRef.get();
 
