@@ -3,6 +3,12 @@ import {
   getFirestore,
   isFirestoreUnauthenticatedError,
 } from './_firebase-admin.js';
+import {
+  assertSeatBookable,
+  reserveSeatInTransaction,
+  releaseSeatInTransaction,
+  applySuccessfulBooking,
+} from './_seat-reservation.js';
 
 const PAYPACK_API = 'https://payments.paypack.rw/api';
 
@@ -72,47 +78,36 @@ async function completeTestPayment(db, ref) {
         failureReason: 'Trip no longer exists',
         processedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+      if (payment.seatReserved) {
+        // Trip gone — hold was on missing doc; nothing to release
+      }
       return;
     }
 
     const trip = tripSnap.data();
-    const bookedSeats = trip.bookedSeats || [];
+    const bookingRef = db.collection('bookings').doc();
+    const bookingId = bookingRef.id;
 
-    if (bookedSeats.includes(payment.seatNumber)) {
+    const result = applySuccessfulBooking(tx, {
+      tripRef,
+      trip,
+      payment,
+      bookingRef,
+      bookingId,
+      admin,
+    });
+
+    if (!result.ok) {
+      if (payment.seatReserved) {
+        releaseSeatInTransaction(tx, tripRef, trip, payment.seatNumber);
+      }
       tx.update(paymentRef, {
         status: 'failed',
-        failureReason: 'Seat is already booked',
+        failureReason: result.failureReason,
         processedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       return;
     }
-
-    const bookingRef = db.collection('bookings').doc();
-    const bookingId = bookingRef.id;
-    const newBooked = [...bookedSeats, payment.seatNumber];
-
-    tx.set(bookingRef, {
-      id: bookingId,
-      tripId: payment.tripId,
-      passengerId: payment.passengerId,
-      companyId: payment.companyId,
-      seatNumber: payment.seatNumber,
-      passengerName: payment.passengerName,
-      passengerPhone: payment.passengerPhone,
-      origin: payment.origin,
-      destination: payment.destination,
-      departureDate: payment.departureDate,
-      departureTime: payment.departureTime,
-      price: payment.amount,
-      status: 'confirmed',
-      qrCode: bookingId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    tx.update(tripRef, {
-      bookedSeats: newBooked,
-      availableSeats: trip.onlineSeats - newBooked.length,
-    });
 
     tx.update(paymentRef, {
       status: 'completed',
@@ -168,23 +163,32 @@ export const handler = async (event) => {
 
     const trip = tripSnap.data();
     const user = userSnap.data();
-    const bookedSeats = trip.bookedSeats || [];
 
-    if (trip.status !== 'scheduled') {
-      return json(409, { error: 'Trip is not available for booking' });
+    try {
+      assertSeatBookable(trip, seatNumber);
+    } catch (seatErr) {
+      return json(seatErr.statusCode || 409, { error: seatErr.message });
     }
 
-    if (seatNumber > trip.onlineSeats || seatNumber > trip.totalSeats) {
-      return json(409, { error: 'Seat is not available for online booking' });
-    }
+    const tripRef = db.collection('trips').doc(tripId);
 
-    if (bookedSeats.includes(seatNumber)) {
-      return json(409, { error: 'Seat is already booked' });
-    }
+    await db.runTransaction(async (tx) => {
+      const freshTripSnap = await tx.get(tripRef);
+      if (!freshTripSnap.exists) {
+        throw Object.assign(new Error('Trip not found'), { statusCode: 404 });
+      }
+      reserveSeatInTransaction(tx, tripRef, freshTripSnap.data(), seatNumber);
+    });
 
     const routeSnap = await db.collection('routes').doc(trip.routeId).get();
 
     if (!routeSnap.exists) {
+      await db.runTransaction(async (tx) => {
+        const freshTripSnap = await tx.get(tripRef);
+        if (freshTripSnap.exists) {
+          releaseSeatInTransaction(tx, tripRef, freshTripSnap.data(), seatNumber);
+        }
+      });
       return json(500, { error: 'Trip route is missing' });
     }
 
@@ -193,62 +197,76 @@ export const handler = async (event) => {
 
     const isTestMode = isPaymentTestMode();
 
-    if (!isTestMode) {
-      const token = await getPaypackToken();
+    try {
+      if (!isTestMode) {
+        const token = await getPaypackToken();
 
-      const cashinRes = await fetch(`${PAYPACK_API}/transactions/cashin`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-          'X-Webhook-Mode': process.env.PAYPACK_WEBHOOK_MODE || 'production',
-        },
-        body: JSON.stringify({
-          number: phone,
-          amount: trip.price,
-        }),
+        const cashinRes = await fetch(`${PAYPACK_API}/transactions/cashin`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-Webhook-Mode': process.env.PAYPACK_WEBHOOK_MODE || 'production',
+          },
+          body: JSON.stringify({
+            number: phone,
+            amount: trip.price,
+          }),
+        });
+
+        if (!cashinRes.ok) {
+          const text = await cashinRes.text();
+          throw new Error(`Paypack cashin failed: ${text}`);
+        }
+
+        const cashin = await cashinRes.json();
+        ref = cashin.ref || cashin.data?.ref;
+
+        if (!ref) {
+          throw new Error('Paypack did not return a transaction reference');
+        }
+      }
+
+      await db.collection('payments').doc(ref).set({
+        paypackRef: ref,
+        tripId,
+        companyId: trip.companyId,
+        passengerId: decoded.uid,
+        seatNumber,
+        amount: trip.price,
+        phone,
+        status: 'pending',
+        seatReserved: true,
+        passengerName: user.name || '',
+        passengerPhone: user.phone || phone,
+        origin: route.origin,
+        destination: route.destination,
+        departureDate: trip.date,
+        departureTime: trip.departureTime,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        testMode: isTestMode,
       });
 
-      if (!cashinRes.ok) {
-        const text = await cashinRes.text();
-        throw new Error(`Paypack cashin failed: ${text}`);
+      if (isTestMode) {
+        console.log(`TEST MODE: Auto-completing payment ${ref}`);
+        await completeTestPayment(db, ref);
       }
 
-      const cashin = await cashinRes.json();
-      ref = cashin.ref || cashin.data?.ref;
-
-      if (!ref) {
-        throw new Error('Paypack did not return a transaction reference');
-      }
+      return json(200, { ref, testMode: isTestMode });
+    } catch (payErr) {
+      await db.runTransaction(async (tx) => {
+        const freshTripSnap = await tx.get(tripRef);
+        if (freshTripSnap.exists) {
+          releaseSeatInTransaction(tx, tripRef, freshTripSnap.data(), seatNumber);
+        }
+      });
+      throw payErr;
     }
-
-    await db.collection('payments').doc(ref).set({
-      paypackRef: ref,
-      tripId,
-      companyId: trip.companyId,
-      passengerId: decoded.uid,
-      seatNumber,
-      amount: trip.price,
-      phone,
-      status: 'pending',
-      passengerName: user.name || '',
-      passengerPhone: user.phone || phone,
-      origin: route.origin,
-      destination: route.destination,
-      departureDate: trip.date,
-      departureTime: trip.departureTime,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      testMode: isTestMode,
-    });
-
-    if (isTestMode) {
-      console.log(`TEST MODE: Auto-completing payment ${ref}`);
-      await completeTestPayment(db, ref);
-    }
-
-    return json(200, { ref, testMode: isTestMode });
   } catch (err) {
+    if (err?.statusCode) {
+      return json(err.statusCode, { error: err.message });
+    }
     if (isFirestoreUnauthenticatedError(err)) {
       return json(500, {
         error:
