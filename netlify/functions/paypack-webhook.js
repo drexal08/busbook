@@ -1,57 +1,35 @@
-import admin from 'firebase-admin';
 import crypto from 'crypto';
+import { ensureFirebaseAdmin, getFirestore } from './_firebase-admin.js';
+import {
+  applySuccessfulBooking,
+  releaseSeatInTransaction,
+} from './_seat-reservation.js';
 
-function getRequiredEnv(name) {
-  const raw = process.env[name];
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
+async function failPaymentAndReleaseSeat(db, paymentRef, failureReason) {
+  const admin = ensureFirebaseAdmin();
 
-function stripWrappingQuotes(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
+  await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(paymentRef);
+    const fresh = freshSnap.data();
+    if (!fresh || fresh.status !== 'pending') return;
 
-function getServiceAccount() {
-  const projectId = stripWrappingQuotes(getRequiredEnv('FIREBASE_PROJECT_ID'));
-  const clientEmail = stripWrappingQuotes(getRequiredEnv('FIREBASE_CLIENT_EMAIL'));
-  const privateKeyRaw = stripWrappingQuotes(getRequiredEnv('FIREBASE_PRIVATE_KEY'));
-  const privateKey = privateKeyRaw.replace(/\\n/g, '\n').trim();
+    if (fresh.seatReserved) {
+      const tripRef = db.collection('trips').doc(fresh.tripId);
+      const tripSnap = await tx.get(tripRef);
+      if (tripSnap.exists) {
+        releaseSeatInTransaction(tx, tripRef, tripSnap.data(), fresh.seatNumber);
+      }
+    }
 
-  if (!privateKey.includes('BEGIN PRIVATE KEY')) {
-    throw new Error(
-      'FIREBASE_PRIVATE_KEY is not valid. Paste the service account private_key string and keep newlines escaped as \\n.'
-    );
-  }
-
-  if (!projectId || !clientEmail.includes('@')) {
-    throw new Error(
-      'Firebase Admin credentials look invalid. Ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY all come from the same service account JSON.'
-    );
-  }
-
-  return { projectId, clientEmail, privateKey };
-}
-
-// Initialize Firebase Admin only once
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(getServiceAccount()),
+    tx.update(paymentRef, {
+      status: 'failed',
+      failureReason,
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
 }
 
-const db = admin.firestore();
-
 export const handler = async (event) => {
-  // Paypack pings with HEAD first
   if (event.httpMethod === 'HEAD') {
     return { statusCode: 200, body: '' };
   }
@@ -60,7 +38,6 @@ export const handler = async (event) => {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  // Verify Paypack signature
   const secret = process.env.PAYPACK_WEBHOOK_SECRET;
   const requestSignature = event.headers['x-paypack-signature'];
 
@@ -95,6 +72,8 @@ export const handler = async (event) => {
   const status = txn.status;
 
   try {
+    const admin = ensureFirebaseAdmin();
+    const db = getFirestore();
     const paymentRef = db.collection('payments').doc(ref);
     const paymentSnap = await paymentRef.get();
 
@@ -104,14 +83,11 @@ export const handler = async (event) => {
 
     const payment = paymentSnap.data();
 
-    // Idempotency — don't process twice
     if (payment.status !== 'pending') {
       return { statusCode: 200, body: JSON.stringify({ already_processed: true }) };
     }
 
     if (status === 'successful') {
-      let bookingId = '';
-
       await db.runTransaction(async (tx) => {
         const freshPaymentSnap = await tx.get(paymentRef);
         const freshPayment = freshPaymentSnap.data();
@@ -131,43 +107,29 @@ export const handler = async (event) => {
         }
 
         const trip = tripSnap.data();
-        const bookedSeats = trip.bookedSeats || [];
+        const bookingRef = db.collection('bookings').doc();
+        const bookingId = bookingRef.id;
 
-        if (bookedSeats.includes(freshPayment.seatNumber)) {
+        const result = applySuccessfulBooking(tx, {
+          tripRef,
+          trip,
+          payment: freshPayment,
+          bookingRef,
+          bookingId,
+          admin,
+        });
+
+        if (!result.ok) {
+          if (freshPayment.seatReserved) {
+            releaseSeatInTransaction(tx, tripRef, trip, freshPayment.seatNumber);
+          }
           tx.update(paymentRef, {
             status: 'failed',
-            failureReason: 'Seat is already booked',
+            failureReason: result.failureReason,
             processedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           return;
         }
-
-        const bookingRef = db.collection('bookings').doc();
-        bookingId = bookingRef.id;
-        const newBooked = [...bookedSeats, freshPayment.seatNumber];
-
-        tx.set(bookingRef, {
-          id: bookingId,
-          tripId: freshPayment.tripId,
-          passengerId: freshPayment.passengerId,
-          companyId: freshPayment.companyId,
-          seatNumber: freshPayment.seatNumber,
-          passengerName: freshPayment.passengerName,
-          passengerPhone: freshPayment.passengerPhone,
-          origin: freshPayment.origin,
-          destination: freshPayment.destination,
-          departureDate: freshPayment.departureDate,
-          departureTime: freshPayment.departureTime,
-          price: freshPayment.amount,
-          status: 'confirmed',
-          qrCode: bookingId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        tx.update(tripRef, {
-          bookedSeats: newBooked,
-          availableSeats: trip.onlineSeats - newBooked.length,
-        });
 
         tx.update(paymentRef, {
           status: 'completed',
@@ -176,14 +138,10 @@ export const handler = async (event) => {
         });
       });
     } else {
-      await paymentRef.update({
-        status: 'failed',
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      await failPaymentAndReleaseSeat(db, paymentRef, 'Payment was not successful');
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
-
   } catch (err) {
     console.error('Webhook error:', err);
     return { statusCode: 500, body: JSON.stringify({ error: 'Internal error' }) };

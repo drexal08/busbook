@@ -215,7 +215,7 @@ const OperatorDashboard: React.FC = () => {
                 {[
                   { label: "Today's trips", value: todayTrips.length, icon: <IconBus size={16} />, color: 'text-violet-600 bg-violet-50' },
                   { label: 'Scanned', value: cBookings.filter(b => b.status === 'used').length, icon: <IconCheckCircle size={16} />, color: 'text-emerald-600 bg-emerald-50' },
-                  { label: 'Pending', value: cBookings.filter(b => b.status === 'confirmed').length, icon: <IconClock size={16} />, color: 'text-amber-600 bg-amber-50' },
+                  { label: 'Awaiting boarding', value: cBookings.filter(b => b.status === 'confirmed').length, icon: <IconClock size={16} />, color: 'text-amber-600 bg-amber-50' },
                   { label: 'Total', value: cBookings.length, icon: <IconTicket size={16} />, color: 'text-gray-600 bg-gray-100' },
                 ].map((s, i) => (
                   <div key={i} className="bg-white rounded-xl border border-border p-4">
@@ -308,7 +308,7 @@ const OperatorDashboard: React.FC = () => {
                           <div className="col-span-2 font-mono text-[10px] text-gray-400">{p.id}</div>
                           <div className="col-span-2">
                             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${p.status === 'confirmed' ? 'bg-amber-50 text-amber-600' : p.status === 'used' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                              {p.status === 'confirmed' ? 'Pending' : p.status === 'used' ? 'Boarded' : 'Cancelled'}
+                              {p.status === 'confirmed' ? 'Awaiting boarding' : p.status === 'used' ? 'Boarded' : 'Cancelled'}
                             </span>
                           </div>
                         </div>
@@ -317,7 +317,7 @@ const OperatorDashboard: React.FC = () => {
                     <div className="bg-surface-secondary px-5 py-3 border-t border-border flex items-center justify-between text-[11px]">
                       <div className="flex gap-4 text-gray-400">
                         <span>Boarded: <span className="font-semibold text-gray-700">{selPassengers.filter(p => p.status === 'used').length}</span></span>
-                        <span>Pending: <span className="font-semibold text-gray-700">{selPassengers.filter(p => p.status === 'confirmed').length}</span></span>
+                        <span>Awaiting boarding: <span className="font-semibold text-gray-700">{selPassengers.filter(p => p.status === 'confirmed').length}</span></span>
                       </div>
                       <button onClick={() => setTab('scan')} className="bg-violet-600 text-white px-3.5 py-1.5 rounded-lg text-[10px] font-semibold hover:bg-violet-700 transition-all flex items-center gap-1"><IconScan size={11} /> Scan</button>
                     </div>

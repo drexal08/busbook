@@ -119,4 +119,5 @@ export interface Payment {
   bookingId?: string;
   processedAt?: string;
   failureReason?: string;
+  seatReserved?: boolean;
 }

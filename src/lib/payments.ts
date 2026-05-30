@@ -44,6 +44,12 @@ export async function initiateCashin(
     if (!res.ok) {
       const errData = await readResponseBody(res);
       const message = typeof errData === 'string' ? errData : errData?.error;
+      if (res.status === 502) {
+        throw new Error(
+          message ||
+            'Payment server is unavailable (502). Redeploy after setting Netlify env vars (FIREBASE_* and PAYMENT_TEST_MODE=true) and check function logs.'
+        );
+      }
       throw new Error(message || `Payment request failed with status ${res.status}`);
     }
 

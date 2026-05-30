@@ -24,6 +24,7 @@ export async function createBooking(data: {
   return ref.id;
 }
 
+/** Marks ticket as boarded. Does not change trip seat counts — inventory is updated when the ticket is sold (payment/booking). */
 export async function validateBooking(bookingId: string) {
   const snap = await getDoc(doc(db, 'bookings', bookingId));
   if (!snap.exists()) return { valid: false, message: 'Ticket not found' };
