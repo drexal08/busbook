@@ -196,18 +196,7 @@ const OperatorDashboard: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              <div className="mt-5 pt-4 border-t border-border-light">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Demo tickets</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {cBookings.filter(b => b.status === 'confirmed').map(b => (
-                    <button key={b.id} onClick={() => setQr(b.qrCode)} className="text-[10px] bg-surface-secondary hover:bg-surface-tertiary px-2.5 py-1.5 rounded-lg font-mono transition-colors border border-border-light">
-                      {b.qrCode.substring(0, 18)}…
-                    </button>
-                  ))}
-                  {cBookings.filter(b => b.status === 'confirmed').length === 0 && <p className="text-[10px] text-gray-400">No active tickets</p>}
-                </div>
-              </div>
+              
             </div>
 
             <div className="space-y-4">
