@@ -1,55 +1,24 @@
-import admin from 'firebase-admin';
+import {
+  ensureFirebaseAdmin,
+  getFirestore,
+  isFirestoreUnauthenticatedError,
+} from './_firebase-admin.js';
 
-function getRequiredEnv(name) {
-  const raw = process.env[name];
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-function stripWrappingQuotes(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function getServiceAccount() {
-  const projectId = stripWrappingQuotes(getRequiredEnv('FIREBASE_PROJECT_ID'));
-  const clientEmail = stripWrappingQuotes(getRequiredEnv('FIREBASE_CLIENT_EMAIL'));
-  const privateKeyRaw = stripWrappingQuotes(getRequiredEnv('FIREBASE_PRIVATE_KEY'));
-  const privateKey = privateKeyRaw.replace(/\\n/g, '\n').trim();
-
-  if (!privateKey.includes('BEGIN PRIVATE KEY')) {
-    throw new Error(
-      'FIREBASE_PRIVATE_KEY is not valid. Paste the service account private_key string and keep newlines escaped as \\n.'
-    );
-  }
-
-  if (!projectId || !clientEmail.includes('@')) {
-    throw new Error(
-      'Firebase Admin credentials look invalid. Ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY all come from the same service account JSON.'
-    );
-  }
-
-  return { projectId, clientEmail, privateKey };
-}
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(getServiceAccount()),
-  });
-}
-
-const db = admin.firestore();
 const PAYPACK_API = 'https://payments.paypack.rw/api';
 
+function isPaymentTestMode() {
+  return String(process.env.PAYMENT_TEST_MODE || '')
+    .trim()
+    .toLowerCase() === 'true';
+}
+
 async function getPaypackToken() {
+  const clientId = process.env.PAYPACK_CLIENT_ID?.trim();
+  const clientSecret = process.env.PAYPACK_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new Error('Paypack credentials are not configured (PAYPACK_CLIENT_ID / PAYPACK_CLIENT_SECRET)');
+  }
+
   const res = await fetch(`${PAYPACK_API}/auth/agents/authorize`, {
     method: 'POST',
     headers: {
@@ -57,8 +26,8 @@ async function getPaypackToken() {
       Accept: 'application/json',
     },
     body: JSON.stringify({
-      client_id: process.env.PAYPACK_CLIENT_ID,
-      client_secret: process.env.PAYPACK_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
     }),
   });
 
@@ -74,17 +43,18 @@ async function getPaypackToken() {
 function json(statusCode, body) {
   return {
     statusCode,
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS'
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
     },
     body: JSON.stringify(body),
   };
 }
 
-async function completeTestPayment(ref) {
+async function completeTestPayment(db, ref) {
+  const admin = ensureFirebaseAdmin();
   const paymentRef = db.collection('payments').doc(ref);
 
   await db.runTransaction(async (tx) => {
@@ -154,7 +124,6 @@ async function completeTestPayment(ref) {
 }
 
 export const handler = async (event) => {
-  // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return json(200, {});
   }
@@ -164,6 +133,9 @@ export const handler = async (event) => {
   }
 
   try {
+    const admin = ensureFirebaseAdmin();
+    const db = getFirestore();
+
     const authHeader = event.headers.authorization || event.headers.Authorization || '';
     const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
@@ -219,8 +191,7 @@ export const handler = async (event) => {
     const route = routeSnap.data();
     let ref = `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Check if test mode is enabled
-    const isTestMode = process.env.PAYMENT_TEST_MODE === 'true';
+    const isTestMode = isPaymentTestMode();
 
     if (!isTestMode) {
       const token = await getPaypackToken();
@@ -271,24 +242,30 @@ export const handler = async (event) => {
       testMode: isTestMode,
     });
 
-    // Auto-complete payment in test mode
     if (isTestMode) {
-      console.log(`🧪 TEST MODE: Auto-completing payment ${ref}`);
-      await completeTestPayment(ref);
+      console.log(`TEST MODE: Auto-completing payment ${ref}`);
+      await completeTestPayment(db, ref);
     }
 
     return json(200, { ref, testMode: isTestMode });
   } catch (err) {
-    const code = err?.code;
-    const isUnauthenticated = code === 16 || code === '16' || /UNAUTHENTICATED/i.test(err?.message || '');
-    if (isUnauthenticated) {
+    if (isFirestoreUnauthenticatedError(err)) {
       return json(500, {
         error:
           'Firebase Admin could not authenticate to Firestore. Verify FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY on Netlify are from the same service account JSON (and FIREBASE_PRIVATE_KEY uses \\n).',
         errorCode: 'FIRESTORE_UNAUTHENTICATED',
       });
     }
+
+    const message = err?.message || 'Payment initiation failed';
+    if (/Missing required environment variable/i.test(message)) {
+      return json(500, {
+        error: `${message}. Set this in Netlify → Site configuration → Environment variables.`,
+        errorCode: 'MISSING_ENV',
+      });
+    }
+
     console.error('Initiate cashin error:', err);
-    return json(500, { error: err?.message || 'Payment initiation failed' });
+    return json(500, { error: message });
   }
 };

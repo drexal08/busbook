@@ -1,57 +1,7 @@
-import admin from 'firebase-admin';
 import crypto from 'crypto';
-
-function getRequiredEnv(name) {
-  const raw = process.env[name];
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
-function stripWrappingQuotes(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function getServiceAccount() {
-  const projectId = stripWrappingQuotes(getRequiredEnv('FIREBASE_PROJECT_ID'));
-  const clientEmail = stripWrappingQuotes(getRequiredEnv('FIREBASE_CLIENT_EMAIL'));
-  const privateKeyRaw = stripWrappingQuotes(getRequiredEnv('FIREBASE_PRIVATE_KEY'));
-  const privateKey = privateKeyRaw.replace(/\\n/g, '\n').trim();
-
-  if (!privateKey.includes('BEGIN PRIVATE KEY')) {
-    throw new Error(
-      'FIREBASE_PRIVATE_KEY is not valid. Paste the service account private_key string and keep newlines escaped as \\n.'
-    );
-  }
-
-  if (!projectId || !clientEmail.includes('@')) {
-    throw new Error(
-      'Firebase Admin credentials look invalid. Ensure FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY all come from the same service account JSON.'
-    );
-  }
-
-  return { projectId, clientEmail, privateKey };
-}
-
-// Initialize Firebase Admin only once
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(getServiceAccount()),
-  });
-}
-
-const db = admin.firestore();
+import { ensureFirebaseAdmin, getFirestore } from './_firebase-admin.js';
 
 export const handler = async (event) => {
-  // Paypack pings with HEAD first
   if (event.httpMethod === 'HEAD') {
     return { statusCode: 200, body: '' };
   }
@@ -60,7 +10,6 @@ export const handler = async (event) => {
     return { statusCode: 405, body: 'Method not allowed' };
   }
 
-  // Verify Paypack signature
   const secret = process.env.PAYPACK_WEBHOOK_SECRET;
   const requestSignature = event.headers['x-paypack-signature'];
 
@@ -95,6 +44,8 @@ export const handler = async (event) => {
   const status = txn.status;
 
   try {
+    const admin = ensureFirebaseAdmin();
+    const db = getFirestore();
     const paymentRef = db.collection('payments').doc(ref);
     const paymentSnap = await paymentRef.get();
 
@@ -104,7 +55,6 @@ export const handler = async (event) => {
 
     const payment = paymentSnap.data();
 
-    // Idempotency — don't process twice
     if (payment.status !== 'pending') {
       return { statusCode: 200, body: JSON.stringify({ already_processed: true }) };
     }
@@ -183,7 +133,6 @@ export const handler = async (event) => {
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
-
   } catch (err) {
     console.error('Webhook error:', err);
     return { statusCode: 500, body: JSON.stringify({ error: 'Internal error' }) };
