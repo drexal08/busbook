@@ -1,5 +1,33 @@
 import crypto from 'crypto';
 import { ensureFirebaseAdmin, getFirestore } from './_firebase-admin.js';
+import {
+  applySuccessfulBooking,
+  releaseSeatInTransaction,
+} from './_seat-reservation.js';
+
+async function failPaymentAndReleaseSeat(db, paymentRef, failureReason) {
+  const admin = ensureFirebaseAdmin();
+
+  await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(paymentRef);
+    const fresh = freshSnap.data();
+    if (!fresh || fresh.status !== 'pending') return;
+
+    if (fresh.seatReserved) {
+      const tripRef = db.collection('trips').doc(fresh.tripId);
+      const tripSnap = await tx.get(tripRef);
+      if (tripSnap.exists) {
+        releaseSeatInTransaction(tx, tripRef, tripSnap.data(), fresh.seatNumber);
+      }
+    }
+
+    tx.update(paymentRef, {
+      status: 'failed',
+      failureReason,
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+}
 
 export const handler = async (event) => {
   if (event.httpMethod === 'HEAD') {
@@ -60,8 +88,6 @@ export const handler = async (event) => {
     }
 
     if (status === 'successful') {
-      let bookingId = '';
-
       await db.runTransaction(async (tx) => {
         const freshPaymentSnap = await tx.get(paymentRef);
         const freshPayment = freshPaymentSnap.data();
@@ -81,43 +107,29 @@ export const handler = async (event) => {
         }
 
         const trip = tripSnap.data();
-        const bookedSeats = trip.bookedSeats || [];
+        const bookingRef = db.collection('bookings').doc();
+        const bookingId = bookingRef.id;
 
-        if (bookedSeats.includes(freshPayment.seatNumber)) {
+        const result = applySuccessfulBooking(tx, {
+          tripRef,
+          trip,
+          payment: freshPayment,
+          bookingRef,
+          bookingId,
+          admin,
+        });
+
+        if (!result.ok) {
+          if (freshPayment.seatReserved) {
+            releaseSeatInTransaction(tx, tripRef, trip, freshPayment.seatNumber);
+          }
           tx.update(paymentRef, {
             status: 'failed',
-            failureReason: 'Seat is already booked',
+            failureReason: result.failureReason,
             processedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           return;
         }
-
-        const bookingRef = db.collection('bookings').doc();
-        bookingId = bookingRef.id;
-        const newBooked = [...bookedSeats, freshPayment.seatNumber];
-
-        tx.set(bookingRef, {
-          id: bookingId,
-          tripId: freshPayment.tripId,
-          passengerId: freshPayment.passengerId,
-          companyId: freshPayment.companyId,
-          seatNumber: freshPayment.seatNumber,
-          passengerName: freshPayment.passengerName,
-          passengerPhone: freshPayment.passengerPhone,
-          origin: freshPayment.origin,
-          destination: freshPayment.destination,
-          departureDate: freshPayment.departureDate,
-          departureTime: freshPayment.departureTime,
-          price: freshPayment.amount,
-          status: 'confirmed',
-          qrCode: bookingId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        tx.update(tripRef, {
-          bookedSeats: newBooked,
-          availableSeats: trip.onlineSeats - newBooked.length,
-        });
 
         tx.update(paymentRef, {
           status: 'completed',
@@ -126,10 +138,7 @@ export const handler = async (event) => {
         });
       });
     } else {
-      await paymentRef.update({
-        status: 'failed',
-        processedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      await failPaymentAndReleaseSeat(db, paymentRef, 'Payment was not successful');
     }
 
     return { statusCode: 200, body: JSON.stringify({ received: true }) };

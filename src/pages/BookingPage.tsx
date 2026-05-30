@@ -3,12 +3,15 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { initiateCashin, listenToPayment } from '../lib/payments';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { Trip } from '../types';
 import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconSeat, IconClock, IconCalendar, IconBus, IconLock, IconLogin } from '../components/Icons';
 
 const BookingPage: React.FC = () => {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
-  const { trips, getCompanyName, getRouteInfo, getBusInfo } = useData();
+  const { trips, bookings, getCompanyName, getRouteInfo, getBusInfo } = useData();
   const { user, isAuthenticated } = useAuth();
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mtn_momo' | 'airtel_money'>('mtn_momo');
@@ -18,7 +21,19 @@ const BookingPage: React.FC = () => {
   const [paymentRef, setPaymentRef] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
-  const trip = trips.find(t => t.id === tripId);
+  const staticTrip = trips.find(t => t.id === tripId);
+  const [liveTrip, setLiveTrip] = useState<Trip | null>(null);
+  const trip = liveTrip ?? staticTrip;
+
+  useEffect(() => {
+    if (!tripId) return;
+    return onSnapshot(doc(db, 'trips', tripId), (snap) => {
+      if (snap.exists()) {
+        setLiveTrip({ id: snap.id, ...snap.data() } as Trip);
+      }
+    });
+  }, [tripId]);
+
   const route = trip ? getRouteInfo(trip.routeId) : undefined;
   const company = trip ? getCompanyName(trip.companyId) : '';
   const bus = trip ? getBusInfo(trip.busId) : undefined;
@@ -38,6 +53,26 @@ const BookingPage: React.FC = () => {
     });
   }, [paymentRef]);
 
+  // Sold seats (payment/booking), not operator scan — includes confirmed + boarded, excludes cancelled
+  const occupiedSeats = useMemo(() => {
+    const seats = new Set<number>(trip?.bookedSeats ?? []);
+    if (!tripId) return seats;
+    for (const b of bookings) {
+      if (b.tripId === tripId && b.status !== 'cancelled') {
+        seats.add(b.seatNumber);
+      }
+    }
+    return seats;
+  }, [trip?.bookedSeats, bookings, tripId]);
+
+  useEffect(() => {
+    if (!trip || !selectedSeat) return;
+    if (occupiedSeats.has(selectedSeat) || selectedSeat > trip.onlineSeats) {
+      setSelectedSeat(null);
+      if (step === 'payment') setStep('seat');
+    }
+  }, [trip, selectedSeat, step, occupiedSeats]);
+
   // DYNAMIC SEAT MAP ENGINE: Automatically configures structure based on any total capacity
 const layoutRows = useMemo(() => {
   if (!bus || !trip) return [];
@@ -51,7 +86,10 @@ const layoutRows = useMemo(() => {
     label: string;
     type: 'passenger' | 'foldable' | 'driver' | 'empty';
     booked: boolean;
+    counterOnly: boolean;
   }>> = [];
+
+  const isOnlineBookable = (num: number) => num <= trip.onlineSeats;
   
   let currentSeatNum = 1;
   
@@ -68,21 +106,24 @@ const layoutRows = useMemo(() => {
       number: remainder >= 1 ? currentSeatNum : undefined,
       label: remainder >= 1 ? String(currentSeatNum++) : '',
       type: remainder >= 1 ? ('passenger' as const) : ('empty' as const),
-      booked: remainder >= 1 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      booked: remainder >= 1 ? occupiedSeats.has(currentSeatNum - 1) : false,
+      counterOnly: remainder >= 1 ? !isOnlineBookable(currentSeatNum - 1) : false
     },
     {
       id: 'front-r2',
       number: remainder >= 2 ? currentSeatNum : undefined,
       label: remainder >= 2 ? String(currentSeatNum++) : '',
       type: remainder >= 2 ? ('passenger' as const) : ('empty' as const),
-      booked: remainder >= 2 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      booked: remainder >= 2 ? occupiedSeats.has(currentSeatNum - 1) : false,
+      counterOnly: remainder >= 2 ? !isOnlineBookable(currentSeatNum - 1) : false
     },
     {
       id: 'front-r3',
       number: remainder >= 3 ? currentSeatNum : undefined,
       label: remainder >= 3 ? String(currentSeatNum++) : '',
       type: remainder >= 3 ? ('passenger' as const) : ('empty' as const),
-      booked: remainder >= 3 ? trip.bookedSeats.includes(currentSeatNum - 1) : false
+      booked: remainder >= 3 ? occupiedSeats.has(currentSeatNum - 1) : false,
+      counterOnly: remainder >= 3 ? !isOnlineBookable(currentSeatNum - 1) : false
     }
   ];
   matrix.push(frontRow);
@@ -100,35 +141,39 @@ const layoutRows = useMemo(() => {
         number: leftSeat1Num,
         label: String(leftSeat1Num),
         type: 'passenger' as const,
-        booked: trip.bookedSeats.includes(leftSeat1Num)
+        booked: occupiedSeats.has(leftSeat1Num),
+        counterOnly: !isOnlineBookable(leftSeat1Num)
       },
       {
         id: `row-${r}-l2`,
         number: leftSeat2Num,
         label: String(leftSeat2Num),
         type: 'passenger' as const,
-        booked: trip.bookedSeats.includes(leftSeat2Num)
+        booked: occupiedSeats.has(leftSeat2Num),
+        counterOnly: !isOnlineBookable(leftSeat2Num)
       },
       {
         id: `row-${r}-m`,
         number: foldableSeatNum,
         label: `${foldableSeatNum}F`, // Appends an 'F' to visually indicate Foldable in the map
         type: 'foldable' as const,
-        booked: trip.bookedSeats.includes(foldableSeatNum)
+        booked: occupiedSeats.has(foldableSeatNum),
+        counterOnly: !isOnlineBookable(foldableSeatNum)
       },
       {
         id: `row-${r}-r`,
         number: rightSeatNum,
         label: String(rightSeatNum),
         type: 'passenger' as const,
-        booked: trip.bookedSeats.includes(rightSeatNum)
+        booked: occupiedSeats.has(rightSeatNum),
+        counterOnly: !isOnlineBookable(rightSeatNum)
       }
     ];
     matrix.push(rowSeats);
   }
   
   return matrix;
-}, [bus, trip]);
+}, [bus, trip, occupiedSeats]);
 
   if (!trip || !route || !bus) {
     return (
@@ -253,11 +298,17 @@ const layoutRows = useMemo(() => {
             <div className="bg-white rounded-xl border border-border p-5">
               <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-2"><IconSeat size={16} /> Select your seat</h3>
               <div className="flex flex-wrap gap-4 mb-5 text-[11px]">
-                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-white border border-border rounded" /> Standard Seat</span>
-                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-amber-50 border border-amber-200 rounded" /> Foldable Seat (F)</span>
+                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-white border border-border rounded" /> Available online</span>
+                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-amber-50 border border-amber-200 rounded" /> Foldable (F)</span>
+                <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-slate-100 border border-slate-300 rounded" /> Counter only</span>
                 <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-primary-600 rounded" /> Selected</span>
                 <span className="flex items-center gap-1.5"><span className="w-5 h-5 bg-gray-200 rounded" /> Booked</span>
               </div>
+              {trip.onlineSeats < bus.totalSeats && (
+                <p className="text-[11px] text-slate-500 mb-4 -mt-2">
+                  Seats {trip.onlineSeats + 1}–{bus.totalSeats} can only be booked at the counter.
+                </p>
+              )}
               
               <div className="bg-surface-secondary rounded-xl p-6 border border-border-light max-w-[280px] mx-auto">
                 {/* Windshield Indicator */}
@@ -282,14 +333,19 @@ const layoutRows = useMemo(() => {
                           );
                         }
 
+                        const unavailable = slot.booked || slot.counterOnly;
+
                         return (
                           <button
                             key={slot.id}
-                            disabled={slot.booked}
-                            onClick={() => setSelectedSeat(slot.number || null)}
+                            disabled={unavailable}
+                            title={slot.counterOnly ? 'Book at counter only' : slot.booked ? 'Already booked' : undefined}
+                            onClick={() => !unavailable && setSelectedSeat(slot.number || null)}
                             className={`w-10 h-9 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center border ${
                               slot.booked
                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed border-transparent'
+                                : slot.counterOnly
+                                ? 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed'
                                 : selectedSeat === slot.number
                                 ? 'bg-primary-600 text-white shadow-md shadow-primary-200 scale-105 border-transparent'
                                 : slot.type === 'foldable'
@@ -329,7 +385,17 @@ const layoutRows = useMemo(() => {
               </div>
 
               {selectedSeat && step === 'seat' && (
-                <button onClick={() => setStep('payment')} className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-xl text-xs transition-all hover:shadow-lg hover:shadow-primary-200">
+                <button
+                  onClick={() => {
+                    if (selectedSeat > trip.onlineSeats) {
+                      setPaymentError('This seat is only available at the counter.');
+                      return;
+                    }
+                    setPaymentError('');
+                    setStep('payment');
+                  }}
+                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 rounded-xl text-xs transition-all hover:shadow-lg hover:shadow-primary-200"
+                >
                   Proceed to payment
                 </button>
               )}
