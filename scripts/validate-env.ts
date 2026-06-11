@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/// <reference types="node" />
+
 /**
  * Environment Variable Validation Script
  * Validates that all required environment variables are set and properly formatted
@@ -88,7 +90,7 @@ function main() {
     console.log('ℹ️  OTP_DEV_MODE is enabled — SMTP credentials are optional for local development\n');
   } else {
     for (const smtpVar of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_EMAIL']) {
-      requiredEnvVars[smtpVar].required = true;
+      (requiredEnvVars as Record<string, any>)[smtpVar].required = true;
     }
   }
   
@@ -104,9 +106,10 @@ function main() {
       hasErrors = true;
     } else {
       const value = process.env[name];
+      const configWithDefault = config as any;
       const displayValue = name.includes('SECRET') || name.includes('PASS') || name.includes('KEY') 
         ? '***hidden***' 
-        : stripWrappingQuotes(value || config.default || '');
+        : stripWrappingQuotes(value || configWithDefault.default || '');
       console.log(`✓ ${name}: ${displayValue}`);
       validatedCount++;
     }

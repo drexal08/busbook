@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Calendar,
   Call,
+  Camera,
   Category,
   Chart,
   ChevronDown,
@@ -25,6 +26,7 @@ import {
   Scan,
   Search,
   ShieldDone,
+  ShieldFail,
   Show,
   Star,
   Swap,
@@ -99,3 +101,6 @@ export const IconLock: React.FC<IconProps> = (props) => renderIconly(Lock, props
 export const IconInfo: React.FC<IconProps> = (props) => renderIconly(InfoSquare, props);
 export const IconPassword: React.FC<IconProps> = (props) => renderIconly(Password, props);
 export const IconAnalytics: React.FC<IconProps> = (props) => renderIconly(Chart, props);
+export const IconCamera: React.FC<IconProps> = (props) => renderIconly(Camera, props);
+export const IconShieldSuccess: React.FC<IconProps> = (props) => renderIconly(ShieldDone, props);
+export const IconShieldError: React.FC<IconProps> = (props) => renderIconly(ShieldFail, props);

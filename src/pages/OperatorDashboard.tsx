@@ -146,7 +146,7 @@ const OperatorDashboard: React.FC = () => {
             setScanning(false);
             // Stop scanner cleanup handled by component
           }}
-          className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-xl text-xs mb-4 transition"
+          className="w-full bg-surface-tertiary hover:bg-surface-secondary text-gray-700 py-2 rounded-xl text-xs mb-4 transition"
         >
           Cancel Scanning
         </button>
@@ -158,12 +158,12 @@ const OperatorDashboard: React.FC = () => {
           value={qr} 
           onChange={e => setQr(e.target.value)} 
           placeholder="Or paste booking ID here…"
-          className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-xs font-mono focus:border-violet-400 focus:ring-2 focus:ring-violet-100 outline-none transition-all" 
+          className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-xs font-mono focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all"
         />
-        <button 
-          onClick={() => handleScan(qr)} 
+        <button
+          onClick={() => handleScan(qr)}
           disabled={!qr.trim() || scanning}
-          className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+          className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
         >
           {scanning ? (
             <>

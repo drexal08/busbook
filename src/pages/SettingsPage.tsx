@@ -234,24 +234,26 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleSendVerificationEmail}
-                disabled={busy === 'email-link'}
-                className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
-              >
-                {busy === 'email-link' ? 'Sending...' : 'Send verification link'}
-              </button>
-              <button
-                type="button"
-                onClick={handleRefreshEmailStatus}
-                disabled={busy === 'refresh-email'}
-                className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-              >
-                {busy === 'refresh-email' ? 'Refreshing...' : 'I have verified'}
-              </button>
-            </div>
+            {!user.emailVerified && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSendVerificationEmail}
+                  disabled={busy === 'email-link'}
+                  className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
+                >
+                  {busy === 'email-link' ? 'Sending...' : 'Send verification link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefreshEmailStatus}
+                  disabled={busy === 'refresh-email'}
+                  className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+                >
+                  {busy === 'refresh-email' ? 'Refreshing...' : 'I have verified'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4">
@@ -267,35 +269,37 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={emailOtp}
-                onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
-                placeholder="Enter email OTP"
-                className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSendEmailOtp}
-                  disabled={busy === 'email-otp-send'}
-                  className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
-                >
-                  {busy === 'email-otp-send' ? 'Sending...' : 'Send OTP'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleVerifyEmailOtp}
-                  disabled={busy === 'email-otp-verify'}
-                  className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-                >
-                  {busy === 'email-otp-verify' ? 'Checking...' : 'Verify OTP'}
-                </button>
+            {!user.emailOtpVerified && (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={emailOtp}
+                  onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter email OTP"
+                  className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSendEmailOtp}
+                    disabled={busy === 'email-otp-send'}
+                    className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
+                  >
+                    {busy === 'email-otp-send' ? 'Sending...' : 'Send OTP'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVerifyEmailOtp}
+                    disabled={busy === 'email-otp-verify'}
+                    className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {busy === 'email-otp-verify' ? 'Checking...' : 'Verify OTP'}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4 md:col-span-2">
@@ -311,42 +315,46 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+250 788 000 000"
-                className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
-              />
-              <button
-                type="button"
-                onClick={handleSendPhoneOtp}
-                disabled={busy === 'phone-otp-send'}
-                className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
-              >
-                {busy === 'phone-otp-send' ? 'Sending...' : 'Send SMS'}
-              </button>
-              <button
-                type="button"
-                onClick={handleVerifyPhoneOtp}
-                disabled={busy === 'phone-otp-verify' || !phoneSession}
-                className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-              >
-                {busy === 'phone-otp-verify' ? 'Checking...' : 'Verify SMS'}
-              </button>
-            </div>
+            {!user.phoneVerified && (
+              <>
+                <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+250 788 000 000"
+                    className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendPhoneOtp}
+                    disabled={busy === 'phone-otp-send'}
+                    className="rounded-xl border border-border px-4 py-2.5 text-[12px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
+                  >
+                    {busy === 'phone-otp-send' ? 'Sending...' : 'Send SMS'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVerifyPhoneOtp}
+                    disabled={busy === 'phone-otp-verify' || !phoneSession}
+                    className="rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {busy === 'phone-otp-verify' ? 'Checking...' : 'Verify SMS'}
+                  </button>
+                </div>
 
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              value={phoneOtp}
-              onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
-              placeholder="Enter phone OTP"
-              className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
-            />
-            <div id="settings-phone-recaptcha" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={phoneOtp}
+                  onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Enter phone OTP"
+                  className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                />
+                <div id="settings-phone-recaptcha" />
+              </>
+            )}
           </div>
         </div>
       </div>

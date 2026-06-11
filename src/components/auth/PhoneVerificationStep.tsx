@@ -51,25 +51,27 @@ export const PhoneVerificationStep: React.FC<PhoneVerificationStepProps> = ({
         </button>
       </div>
 
-      <div className="flex gap-2">
-        <input
-          type="text"
-          inputMode="numeric"
-          maxLength={6}
-          value={otp}
-          onChange={(e) => onOtpChange(e.target.value.replace(/\D/g, ''))}
-          placeholder="Enter phone OTP"
-          className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all"
-        />
-        <button
-          type="button"
-          onClick={onVerify}
-          disabled={verifying || verified || !hasSession}
-          className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-        >
-          {verifying ? LOADING_MESSAGES.VERIFYING_PHONE_OTP : verified ? 'Verified' : 'Verify'}
-        </button>
-      </div>
+      {!verified && (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={otp}
+            onChange={(e) => onOtpChange(e.target.value.replace(/\D/g, ''))}
+            placeholder="Enter phone OTP"
+            className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all"
+          />
+          <button
+            type="button"
+            onClick={onVerify}
+            disabled={verifying || !hasSession}
+            className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+          >
+            {verifying ? LOADING_MESSAGES.VERIFYING_PHONE_OTP : 'Verify'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

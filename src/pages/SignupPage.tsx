@@ -47,7 +47,7 @@ const SignupPage: React.FC = () => {
       {
         label: 'Google',
         action: async () => loginWithGoogle(),
-        className: 'border border-border text-gray-700 hover:bg-gray-50',
+        className: 'border border-border text-gray-700 hover:bg-surface-secondary',
         markClassName: 'bg-white text-gray-700 border border-border',
         mark: 'G',
       },

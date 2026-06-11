@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
   const authActions = useMemo(() => ([
     {
       label: 'Continue with Google',
-      className: 'border border-border text-gray-700 hover:bg-gray-50',
+      className: 'border border-border text-gray-700 hover:bg-surface-secondary',
       action: async () => loginWithGoogle(),
       mark: 'G',
       markClassName: 'bg-white text-gray-700 border border-border',

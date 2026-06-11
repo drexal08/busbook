@@ -36,7 +36,7 @@ const Navbar: React.FC = () => {
       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-all
         ${isActive(to)
           ? 'text-primary-600 bg-primary-50'
-          : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+          : 'text-gray-500 hover:text-gray-800 hover:bg-surface-secondary'
         }`}
     >
       {icon}
@@ -45,9 +45,9 @@ const Navbar: React.FC = () => {
   );
 
   const roleBadge: Record<string, { label: string; color: string }> = {
-    passenger: { label: 'Passenger', color: 'bg-blue-50 text-blue-600' },
+    passenger: { label: 'Passenger', color: 'bg-primary-50 text-primary-600' },
     company: { label: 'Company', color: 'bg-emerald-50 text-emerald-600' },
-    operator: { label: 'Operator', color: 'bg-violet-50 text-violet-600' },
+    operator: { label: 'Operator', color: 'bg-primary-100 text-primary-700' },
     admin: { label: 'Admin', color: 'bg-rose-50 text-rose-600' },
   };
 
@@ -93,7 +93,7 @@ const Navbar: React.FC = () => {
                 )}
                 <button
                   onClick={handleLogout}
-                  className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all"
+                  className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-surface-secondary transition-all"
                   title="Logout"
                 >
                   <IconLogout size={18} />
@@ -103,7 +103,7 @@ const Navbar: React.FC = () => {
               <>
                 <Link
                   to="/login"
-                  className="text-[13px] font-medium text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-50 transition-all"
+                  className="text-[13px] font-medium text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-surface-secondary transition-all"
                 >
                   Log in
                 </Link>
@@ -120,7 +120,7 @@ const Navbar: React.FC = () => {
           {/* Mobile Toggle */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-50"
+            className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-surface-secondary"
           >
             {mobileOpen ? <IconX size={20} /> : <IconMenu size={20} />}
           </button>
@@ -156,7 +156,7 @@ const Navbar: React.FC = () => {
               </>
             ) : (
               <div className="flex gap-2 pt-1">
-                <Link to="/login" onClick={() => setMobileOpen(false)} className="flex-1 text-center text-[13px] font-medium text-gray-700 border border-border py-2 rounded-lg hover:bg-gray-50">Log in</Link>
+                <Link to="/login" onClick={() => setMobileOpen(false)} className="flex-1 text-center text-[13px] font-medium text-gray-700 border border-border py-2 rounded-lg hover:bg-surface-secondary">Log in</Link>
                 <Link to="/signup" onClick={() => setMobileOpen(false)} className="flex-1 text-center text-[13px] font-semibold text-white bg-primary-600 py-2 rounded-lg hover:bg-primary-700">Sign up</Link>
               </div>
             )}

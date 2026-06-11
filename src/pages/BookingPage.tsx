@@ -425,7 +425,7 @@ const layoutRows = useMemo(() => {
                       className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-2.5 text-xs focus:border-primary-400 outline-none transition-all" />
                   </div>
                   <button onClick={handleBooking} disabled={!paymentPhone}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all">
+                    className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all">
                     Pay {trip.price.toLocaleString()} RWF
                   </button>
                 </div>
