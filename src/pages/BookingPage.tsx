@@ -9,7 +9,7 @@ const BookingPage: React.FC = () => {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
   const { trips, getCompanyName, getRouteInfo, getBusInfo } = useData();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'mtn_momo' | 'airtel_money'>('mtn_momo');
   const [paymentPhone, setPaymentPhone] = useState('');
@@ -135,6 +135,14 @@ const BookingPage: React.FC = () => {
           <h3 className="font-semibold text-gray-700 mb-1 text-sm">Trip not found</h3>
           <button onClick={() => navigate('/search')} className="text-xs text-primary-600 font-semibold hover:underline mt-2">Search trips</button>
         </div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
+        <div className="w-8 h-8 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

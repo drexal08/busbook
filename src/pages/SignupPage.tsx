@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import type { ConfirmationResult } from 'firebase/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { UserRole } from '../types';
-import { IconUser, IconBuilding, IconScan, IconCheckCircle } from '../components/Icons';
+import { IconUser, IconBuilding, IconScan, IconCheckCircle, IconMail, IconPhone } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
 import { deleteRegistration } from '../lib/auth';
+import {
+  confirmSignupPhoneOtp,
+  requestSignupPhoneOtp,
+  sendEmailOtp,
+  verifyEmailOtp,
+} from '../lib/verification';
+import { getPostAuthPath } from '../lib/userRoutes';
 
 const SignupPage: React.FC = () => {
   const [name, setName] = useState('');
@@ -19,16 +27,142 @@ const SignupPage: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { signup } = useAuth();
+  const [emailOtp, setEmailOtp] = useState('');
+  const [emailOtpVerifiedFor, setEmailOtpVerifiedFor] = useState('');
+  const [sendingEmailOtp, setSendingEmailOtp] = useState(false);
+  const [verifyingEmailOtp, setVerifyingEmailOtp] = useState(false);
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [sendingPhoneOtp, setSendingPhoneOtp] = useState(false);
+  const [verifyingPhoneOtp, setVerifyingPhoneOtp] = useState(false);
+  const [phoneOtpVerifiedFor, setPhoneOtpVerifiedFor] = useState('');
+  const [phoneOtpSession, setPhoneOtpSession] = useState<ConfirmationResult | null>(null);
+  const [verificationNotice, setVerificationNotice] = useState('');
+  const { signup, loginWithGoogle, loginWithFacebook } = useAuth();
   const { companies, loading, addCompanyWithId } = useData();
   const navigate = useNavigate();
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPhone = phone.trim().replace(/\s+/g, '');
+  const emailOtpVerified = !!normalizedEmail && emailOtpVerifiedFor === normalizedEmail;
+  const phoneOtpVerified = !!normalizedPhone && phoneOtpVerifiedFor === normalizedPhone;
+  const socialOptions = useMemo(() => ([
+    {
+      label: 'Google',
+      action: async () => loginWithGoogle(),
+      className: 'border border-border text-gray-700 hover:bg-gray-50',
+      markClassName: 'bg-white text-gray-700 border border-border',
+      mark: 'G',
+    },
+    {
+      label: 'Facebook',
+      action: async () => loginWithFacebook(),
+      className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
+      markClassName: 'bg-white/20 text-white',
+      mark: 'f',
+    },
+  ]), [loginWithFacebook, loginWithGoogle]);
+
+  const resetVerificationMessages = () => {
+    setError('');
+    setSuccess('');
+    setVerificationNotice('');
+  };
+
+  const handleSendEmailOtp = async () => {
+    if (!normalizedEmail) {
+      setError('Enter your email address first');
+      return;
+    }
+
+    try {
+      setSendingEmailOtp(true);
+      resetVerificationMessages();
+      await sendEmailOtp(normalizedEmail);
+      setEmailOtpVerifiedFor('');
+      setVerificationNotice('Email OTP sent. Check your inbox for the 6-digit code.');
+    } catch (e: any) {
+      setError(e.message || 'Could not send email OTP');
+    } finally {
+      setSendingEmailOtp(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async () => {
+    if (!normalizedEmail || !emailOtp.trim()) {
+      setError('Enter the email OTP code first');
+      return;
+    }
+
+    try {
+      setVerifyingEmailOtp(true);
+      resetVerificationMessages();
+      await verifyEmailOtp(normalizedEmail, emailOtp.trim());
+      setEmailOtpVerifiedFor(normalizedEmail);
+      setVerificationNotice('Email OTP verified successfully.');
+    } catch (e: any) {
+      setError(e.message || 'Email OTP verification failed');
+    } finally {
+      setVerifyingEmailOtp(false);
+    }
+  };
+
+  const handleSendPhoneOtp = async () => {
+    if (!normalizedPhone) {
+      setError('Enter your phone number first');
+      return;
+    }
+
+    try {
+      setSendingPhoneOtp(true);
+      resetVerificationMessages();
+      const session = await requestSignupPhoneOtp(normalizedPhone, 'signup-phone-recaptcha');
+      setPhoneOtpSession(session);
+      setPhoneOtpVerifiedFor('');
+      setVerificationNotice('Phone OTP sent. Enter the SMS code to confirm your number.');
+    } catch (e: any) {
+      setError(e.message || 'Could not send phone OTP');
+    } finally {
+      setSendingPhoneOtp(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    if (!phoneOtpSession || !phoneOtp.trim()) {
+      setError('Send the phone OTP and enter the SMS code first');
+      return;
+    }
+
+    try {
+      setVerifyingPhoneOtp(true);
+      resetVerificationMessages();
+      await confirmSignupPhoneOtp(phoneOtpSession, phoneOtp.trim());
+      setPhoneOtpVerifiedFor(normalizedPhone);
+      setPhoneOtpSession(null);
+      setVerificationNotice('Phone number verified successfully.');
+    } catch (e: any) {
+      setError(e.message || 'Phone OTP verification failed');
+    } finally {
+      setVerifyingPhoneOtp(false);
+    }
+  };
+
+  const handleSocialSignup = async (
+    action: () => Promise<{ success: boolean; error?: string; profile?: any }>
+  ) => {
+    resetVerificationMessages();
+    const result = await action();
+    if (result.success) {
+      navigate(getPostAuthPath(result.profile));
+      return;
+    }
+    setError(result.error || 'Social signup failed');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (submitting) return;
 
-  setError(''); 
-  setSuccess('');
+  resetVerificationMessages();
   
   if (password.length < 6) { 
     setError('Password must be at least 6 characters'); 
@@ -63,7 +197,15 @@ const SignupPage: React.FC = () => {
     setSubmitting(true);
     const companyId = `comp-${Date.now()}`;
     try {
-      const result = await signup(name, email, password, phone, role, companyId);
+      const result = await signup(
+        name,
+        email,
+        password,
+        phone,
+        role,
+        companyId,
+        { emailOtpVerified, phoneVerified: phoneOtpVerified }
+      );
       if (!result.success || !result.userId) {
         setError(result.error || 'Registration failed');
         return;
@@ -85,8 +227,8 @@ const SignupPage: React.FC = () => {
         throw setupError;
       }
 
-      setSuccess('Registration submitted! Admin approval is required before you can operate.');
-      setTimeout(() => navigate('/login'), 3000);
+      setSuccess('Registration submitted. Complete remaining verification in Settings while approval is pending.');
+      setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
     } catch (e: any) {
       setError(e.message || 'Registration failed. Please try again.');
     } finally {
@@ -99,10 +241,18 @@ const SignupPage: React.FC = () => {
   if (role === 'operator') {
     setSubmitting(true);
     try {
-      const result = await signup(name, email, password, phone, role, companyCode.trim());
+      const result = await signup(
+        name,
+        email,
+        password,
+        phone,
+        role,
+        companyCode.trim(),
+        { emailOtpVerified, phoneVerified: phoneOtpVerified }
+      );
       if (result.success && result.userId) {
-        setSuccess('Registration submitted! Company approval required before you can scan tickets.');
-        setTimeout(() => navigate('/login'), 3000);
+        setSuccess('Registration submitted. Finish verification in Settings while company approval is pending.');
+        setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -114,8 +264,16 @@ const SignupPage: React.FC = () => {
 
   setSubmitting(true);
   try {
-    const result = await signup(name, email, password, phone, role);
-    if (result.success) navigate('/');
+    const result = await signup(
+      name,
+      email,
+      password,
+      phone,
+      role,
+      undefined,
+      { emailOtpVerified, phoneVerified: phoneOtpVerified }
+    );
+    if (result.success) navigate(getPostAuthPath(result.profile));
     else setError(result.error || 'Signup failed');
   } finally {
     setSubmitting(false);
@@ -145,6 +303,35 @@ const SignupPage: React.FC = () => {
         <div className="bg-white rounded-2xl border border-border shadow-sm p-6 sm:p-7">
           {error && <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{error}</div>}
           {success && <div className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium flex items-center gap-2"><IconCheckCircle size={16} /> {success}</div>}
+          {verificationNotice && <div className="bg-blue-50 border border-blue-100 text-blue-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{verificationNotice}</div>}
+
+          {role === 'passenger' && (
+            <div className="mb-4 space-y-2">
+              <div className="rounded-xl border border-border-light bg-surface-secondary p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-gray-800">Quick signup options</p>
+                    <p className="text-[11px] text-gray-400">Passenger accounts can start with social login and finish verification in Settings.</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {socialOptions.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => handleSocialSignup(item.action)}
+                      className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition-all ${item.className}`}
+                    >
+                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${item.markClassName}`}>
+                        {item.mark}
+                      </span>
+                      Continue with {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -206,6 +393,101 @@ const SignupPage: React.FC = () => {
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Phone</label>
               <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+250 788 000 000" className={fieldClasses} required />
             </div>
+
+            <div className="rounded-xl border border-border-light bg-surface-secondary p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[12px] font-semibold text-gray-800">Verification checks</p>
+                  <p className="text-[11px] text-gray-400">You can verify now or continue and finish later in Settings.</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconMail size={16} className={emailOtpVerified ? 'text-emerald-500' : 'text-gray-300'} />
+                    <div>
+                      <p className="text-[12px] font-semibold text-gray-800">Email OTP</p>
+                      <p className="text-[11px] text-gray-400">
+                        {emailOtpVerified ? 'Verified for this email' : 'Send a 6-digit code to your email'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendEmailOtp}
+                    disabled={sendingEmailOtp}
+                    className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
+                  >
+                    {sendingEmailOtp ? 'Sending...' : 'Send code'}
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={emailOtp}
+                    onChange={e => setEmailOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter email OTP"
+                    className={fieldClasses}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyEmailOtp}
+                    disabled={verifyingEmailOtp}
+                    className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {verifyingEmailOtp ? 'Checking...' : 'Verify'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconPhone size={16} className={phoneOtpVerified ? 'text-emerald-500' : 'text-gray-300'} />
+                    <div>
+                      <p className="text-[12px] font-semibold text-gray-800">Phone OTP</p>
+                      <p className="text-[11px] text-gray-400">
+                        {phoneOtpVerified ? 'Verified for this phone number' : 'Send an SMS code to confirm your number'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendPhoneOtp}
+                    disabled={sendingPhoneOtp}
+                    className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
+                  >
+                    {sendingPhoneOtp ? 'Sending...' : 'Send SMS'}
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={phoneOtp}
+                    onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter phone OTP"
+                    className={fieldClasses}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyPhoneOtp}
+                    disabled={verifyingPhoneOtp || !phoneOtpSession}
+                    className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {verifyingPhoneOtp ? 'Checking...' : 'Verify'}
+                  </button>
+                </div>
+                <div id="signup-phone-recaptcha" />
+              </div>
+            </div>
+
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Password</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" className={fieldClasses} required />

@@ -13,7 +13,7 @@ import { TripTemplate, User } from '../types';
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const {
     companies,
     getCompanyTrips,
@@ -177,6 +177,7 @@ const CompanyDashboard: React.FC = () => {
     setTab('schedules');
   };
 
+  if (authLoading) return null;
   if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
 
   const tabs = [

@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 const OperatorDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { validateTicket, getCompanyTrips, bookings, getRouteInfo } = useData();
   const [qr, setQr] = useState('');
   const [result, setResult] = useState<{ valid: boolean; message: string; booking?: any } | null>(null);
@@ -16,6 +16,10 @@ const OperatorDashboard: React.FC = () => {
   const [tab, setTab] = useState<'scan' | 'trips' | 'passengers'>('scan');
   
   // 1. FIRST: Authenticate and confirm role boundaries
+  if (authLoading) {
+    return null;
+  }
+
   if (!isAuthenticated || !user || user.role !== 'operator') { 
     navigate('/login'); 
     return null; 
