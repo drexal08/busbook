@@ -99,7 +99,8 @@ const layoutRows = useMemo(() => {
       id: 'driver-slot',
       label: 'Drv',
       type: 'driver' as const,
-      booked: false
+      booked: false,
+      counterOnly: false,
     },
     {
       id: 'front-r1',

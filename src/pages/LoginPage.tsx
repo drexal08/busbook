@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { IconMail, IconLock } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
 import { getPostAuthPath } from '../lib/userRoutes';
+import { ERROR_MESSAGES, LOADING_MESSAGES } from '../lib/auth/constants';
+import { toAuthError } from '../lib/auth/errors';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -37,26 +39,36 @@ const LoginPage: React.FC = () => {
     setSubmitting(true);
     setError('');
 
-    const result = await login(email, password);
-    if (result.success) {
-      navigate(getPostAuthPath(result.profile));
-    } else {
-      setError(result.error || 'Login failed');
+    try {
+      const result = await login(email, password);
+      if (result.success) {
+        navigate(getPostAuthPath(result.profile));
+      } else {
+        setError(result.error || ERROR_MESSAGES.LOGIN_FAILED);
+      }
+    } catch (error) {
+      const authError = toAuthError(error);
+      setError(authError.message || ERROR_MESSAGES.UNKNOWN_ERROR);
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   const handleSocialLogin = async (
     action: () => Promise<{ success: boolean; error?: string; profile?: any }>
   ) => {
     setError('');
-    const result = await action();
-    if (result.success) {
-      navigate(getPostAuthPath(result.profile));
-      return;
+    try {
+      const result = await action();
+      if (result.success) {
+        navigate(getPostAuthPath(result.profile));
+        return;
+      }
+      setError(result.error || 'Social login failed');
+    } catch (error) {
+      const authError = toAuthError(error);
+      setError(authError.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     }
-    setError(result.error || 'Social login failed');
   };
 
   return (
@@ -101,7 +113,7 @@ const LoginPage: React.FC = () => {
             </div>
             <button type="submit" disabled={submitting}
               className="w-full bg-primary-700 hover:bg-primary-800 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
-              {submitting ? 'Logging in...' : 'Log in'}
+              {submitting ? LOADING_MESSAGES.LOGGING_IN : 'Log in'}
             </button>
             <div className="relative py-1">
               <div className="border-t border-border-light" />

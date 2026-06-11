@@ -7,7 +7,9 @@
     "dev": "vite",
     "dev:netlify": "netlify dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "validate-env": "node --env-file=.env --experimental-strip-types scripts/validate-env.ts"
   },
   "dependencies": {
     "clsx": "2.1.1",

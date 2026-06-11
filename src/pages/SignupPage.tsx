@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useReducer, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import type { ConfirmationResult } from 'firebase/auth';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { UserRole } from '../types';
-import { IconUser, IconBuilding, IconScan, IconCheckCircle, IconMail, IconPhone } from '../components/Icons';
+import { IconUser, IconBuilding, IconScan, IconCheckCircle } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
+import { EmailVerificationStep, PhoneVerificationStep } from '../components/auth';
 import { deleteRegistration } from '../lib/auth';
 import {
   confirmSignupPhoneOtp,
@@ -14,37 +14,33 @@ import {
   verifyEmailOtp,
 } from '../lib/verification';
 import { getPostAuthPath } from '../lib/userRoutes';
+import { signupReducer, initialState } from '../lib/auth/signupReducer';
+import { ERROR_MESSAGES, SUCCESS_MESSAGES, VERIFICATION_CONFIG } from '../lib/auth/constants';
+import { toAuthError } from '../lib/auth/errors';
 
 const SignupPage: React.FC = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<UserRole>('passenger');
-  const [companyName, setCompanyName] = useState('');
-  const [companyCode, setCompanyCode] = useState('');
-  const [companyDescription, setCompanyDescription] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [emailOtp, setEmailOtp] = useState('');
-  const [emailOtpVerifiedFor, setEmailOtpVerifiedFor] = useState('');
-  const [sendingEmailOtp, setSendingEmailOtp] = useState(false);
-  const [verifyingEmailOtp, setVerifyingEmailOtp] = useState(false);
-  const [phoneOtp, setPhoneOtp] = useState('');
-  const [sendingPhoneOtp, setSendingPhoneOtp] = useState(false);
-  const [verifyingPhoneOtp, setVerifyingPhoneOtp] = useState(false);
-  const [phoneOtpVerifiedFor, setPhoneOtpVerifiedFor] = useState('');
-  const [phoneOtpSession, setPhoneOtpSession] = useState<ConfirmationResult | null>(null);
-  const [verificationNotice, setVerificationNotice] = useState('');
+  const [state, dispatch] = useReducer(signupReducer, initialState);
   const { signup, loginWithGoogle, loginWithFacebook } = useAuth();
   const { companies, loading, addCompanyWithId } = useData();
   const navigate = useNavigate();
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const normalizedPhone = phone.trim().replace(/\s+/g, '');
-  const emailOtpVerified = !!normalizedEmail && emailOtpVerifiedFor === normalizedEmail;
-  const phoneOtpVerified = !!normalizedPhone && phoneOtpVerifiedFor === normalizedPhone;
+  // Countdown timer for resend button
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (state.countdown > 0) {
+      interval = setInterval(() => {
+        dispatch({ type: 'DECREMENT_COUNTDOWN' });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [state.countdown]);
+
+  const normalizedEmail = state.email.trim().toLowerCase();
+  const normalizedPhone = state.phone.trim().replace(/\s+/g, '');
+  const emailOtpVerified = !!normalizedEmail && state.emailOtpVerifiedFor === normalizedEmail;
+  const phoneOtpVerified = !!normalizedPhone && state.phoneOtpVerifiedFor === normalizedPhone;
 
   const socialOptions = useMemo(
     () => [
@@ -67,86 +63,94 @@ const SignupPage: React.FC = () => {
   );
 
   const resetVerificationMessages = () => {
-    setError('');
-    setSuccess('');
-    setVerificationNotice('');
+    dispatch({ type: 'RESET_MESSAGES' });
+  };
+
+  const startResendCountdown = () => {
+    dispatch({ type: 'START_COUNTDOWN' });
   };
 
   const handleSendEmailOtp = async () => {
     if (!normalizedEmail) {
-      setError('Enter your email address first');
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.EMAIL_REQUIRED });
       return;
     }
 
     try {
-      setSendingEmailOtp(true);
+      dispatch({ type: 'START_SENDING_EMAIL_OTP' });
       resetVerificationMessages();
       await sendEmailOtp(normalizedEmail);
-      setEmailOtpVerifiedFor('');
-      setVerificationNotice('Email OTP sent. Check your inbox for the 6-digit code.');
-    } catch (e: any) {
-      setError(e.message || 'Could not send email OTP');
+      dispatch({ type: 'CLEAR_EMAIL_OTP_VERIFIED' });
+      dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.EMAIL_OTP_SENT });
+      startResendCountdown();
+    } catch (e) {
+      const error = toAuthError(e);
+      dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.UNKNOWN_ERROR });
     } finally {
-      setSendingEmailOtp(false);
+      dispatch({ type: 'END_SENDING_EMAIL_OTP' });
     }
   };
 
   const handleVerifyEmailOtp = async () => {
-    if (!normalizedEmail || !emailOtp.trim()) {
-      setError('Enter the email OTP code first');
+    if (!normalizedEmail || !state.emailOtp.trim()) {
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.EMAIL_OTP_REQUIRED });
       return;
     }
 
     try {
-      setVerifyingEmailOtp(true);
+      dispatch({ type: 'START_VERIFYING_EMAIL_OTP' });
       resetVerificationMessages();
-      await verifyEmailOtp(normalizedEmail, emailOtp.trim());
-      setEmailOtpVerifiedFor(normalizedEmail);
-      setVerificationNotice('Email OTP verified successfully.');
-    } catch (e: any) {
-      setError(e.message || 'Email OTP verification failed');
+      await verifyEmailOtp(normalizedEmail, state.emailOtp.trim());
+      dispatch({ type: 'SET_EMAIL_OTP_VERIFIED', email: normalizedEmail });
+      dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.EMAIL_OTP_VERIFIED });
+      dispatch({ type: 'RESET_COUNTDOWN' });
+    } catch (e) {
+      const error = toAuthError(e);
+      dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.UNKNOWN_ERROR });
     } finally {
-      setVerifyingEmailOtp(false);
+      dispatch({ type: 'END_VERIFYING_EMAIL_OTP' });
     }
   };
 
   const handleSendPhoneOtp = async () => {
     if (!normalizedPhone) {
-      setError('Enter your phone number first');
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.PHONE_REQUIRED });
       return;
     }
 
     try {
-      setSendingPhoneOtp(true);
+      dispatch({ type: 'START_SENDING_PHONE_OTP' });
       resetVerificationMessages();
       const session = await requestSignupPhoneOtp(normalizedPhone, 'signup-phone-recaptcha');
-      setPhoneOtpSession(session);
-      setPhoneOtpVerifiedFor('');
-      setVerificationNotice('Phone OTP sent. Enter the SMS code to confirm your number.');
-    } catch (e: any) {
-      setError(e.message || 'Could not send phone OTP');
+      dispatch({ type: 'SET_PHONE_OTP_SESSION', session });
+      dispatch({ type: 'CLEAR_PHONE_OTP_VERIFIED' });
+      dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.PHONE_OTP_SENT });
+    } catch (e) {
+      const error = toAuthError(e);
+      dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.UNKNOWN_ERROR });
     } finally {
-      setSendingPhoneOtp(false);
+      dispatch({ type: 'END_SENDING_PHONE_OTP' });
     }
   };
 
   const handleVerifyPhoneOtp = async () => {
-    if (!phoneOtpSession || !phoneOtp.trim()) {
-      setError('Send the phone OTP and enter the SMS code first');
+    if (!state.phoneOtpSession || !state.phoneOtp.trim()) {
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.PHONE_OTP_REQUIRED });
       return;
     }
 
     try {
-      setVerifyingPhoneOtp(true);
+      dispatch({ type: 'START_VERIFYING_PHONE_OTP' });
       resetVerificationMessages();
-      await confirmSignupPhoneOtp(phoneOtpSession, phoneOtp.trim());
-      setPhoneOtpVerifiedFor(normalizedPhone);
-      setPhoneOtpSession(null);
-      setVerificationNotice('Phone number verified successfully.');
-    } catch (e: any) {
-      setError(e.message || 'Phone OTP verification failed');
+      await confirmSignupPhoneOtp(state.phoneOtpSession, state.phoneOtp.trim());
+      dispatch({ type: 'SET_PHONE_OTP_VERIFIED', phone: normalizedPhone });
+      dispatch({ type: 'SET_PHONE_OTP_SESSION', session: null });
+      dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.PHONE_OTP_VERIFIED });
+    } catch (e) {
+      const error = toAuthError(e);
+      dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.UNKNOWN_ERROR });
     } finally {
-      setVerifyingPhoneOtp(false);
+      dispatch({ type: 'END_VERIFYING_PHONE_OTP' });
     }
   };
 
@@ -159,67 +163,67 @@ const SignupPage: React.FC = () => {
       navigate(getPostAuthPath(result.profile));
       return;
     }
-    setError(result.error || 'Social signup failed');
+    dispatch({ type: 'SET_ERROR', error: result.error || 'Social signup failed' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting) return;
+    if (state.submitting) return;
 
     resetVerificationMessages();
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (state.password.length < VERIFICATION_CONFIG.PASSWORD.MIN_LENGTH) {
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.PASSWORD_TOO_SHORT });
       return;
     }
 
-    if (role === 'company' && !companyName.trim()) {
-      setError('Company name is required');
+    if (state.role === 'company' && !state.companyName.trim()) {
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.COMPANY_NAME_REQUIRED });
       return;
     }
 
-    if (role === 'operator' && !companyCode.trim()) {
-      setError('Company code is required');
+    if (state.role === 'operator' && !state.companyCode.trim()) {
+      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.COMPANY_CODE_REQUIRED });
       return;
     }
 
-    if (role === 'operator') {
+    if (state.role === 'operator') {
       if (loading) {
-        setError('Company data is still loading. Please try again in a moment.');
+        dispatch({ type: 'SET_ERROR', error: 'Company data is still loading. Please try again in a moment.' });
         return;
       }
 
       const companyExists = companies.find(
-        (company) => company.id === companyCode.trim() && company.status === 'approved'
+        (company) => company.id === state.companyCode.trim() && company.status === 'approved'
       );
       if (!companyExists) {
-        setError('Invalid company code or company not approved');
+        dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.COMPANY_CODE_INVALID });
         return;
       }
     }
 
-    if (role === 'company') {
-      setSubmitting(true);
+    if (state.role === 'company') {
+      dispatch({ type: 'START_SUBMITTING' });
       const companyId = `comp-${Date.now()}`;
       try {
-        const result = await signup(name, email, password, phone, role, companyId, {
+        const result = await signup(state.name, state.email, state.password, state.phone, state.role, companyId, {
           emailOtpVerified,
           phoneVerified: phoneOtpVerified,
         });
         if (!result.success || !result.userId) {
-          setError(result.error || 'Registration failed');
+          dispatch({ type: 'SET_ERROR', error: result.error || ERROR_MESSAGES.SIGNUP_FAILED });
           return;
         }
 
         try {
           await addCompanyWithId({
             id: companyId,
-            name: companyName,
+            name: state.companyName,
             ownerId: result.userId,
-            description: companyDescription || 'New bus company',
+            description: state.companyDescription || 'New bus company',
             status: 'pending',
-            phone,
-            email,
+            phone: state.phone,
+            email: state.email,
             createdAt: new Date().toISOString().split('T')[0],
           });
         } catch (setupError) {
@@ -227,45 +231,53 @@ const SignupPage: React.FC = () => {
           throw setupError;
         }
 
-        setSuccess('Registration submitted. Complete remaining verification in Settings while approval is pending.');
+        dispatch({ type: 'SET_SUCCESS', success: SUCCESS_MESSAGES.REGISTRATION_SUBMITTED });
         setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
-      } catch (e: any) {
-        setError(e.message || 'Registration failed. Please try again.');
+      } catch (e) {
+        const error = toAuthError(e);
+        dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.SIGNUP_FAILED });
       } finally {
-        setSubmitting(false);
+        dispatch({ type: 'END_SUBMITTING' });
       }
       return;
     }
 
-    if (role === 'operator') {
-      setSubmitting(true);
+    if (state.role === 'operator') {
+      dispatch({ type: 'START_SUBMITTING' });
       try {
-        const result = await signup(name, email, password, phone, role, companyCode.trim(), {
+        const result = await signup(state.name, state.email, state.password, state.phone, state.role, state.companyCode.trim(), {
           emailOtpVerified,
           phoneVerified: phoneOtpVerified,
         });
         if (result.success && result.userId) {
-          setSuccess('Registration submitted. Finish verification in Settings while company approval is pending.');
+          dispatch({ type: 'SET_SUCCESS', success: SUCCESS_MESSAGES.REGISTRATION_SUBMITTED });
           setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
         } else {
-          setError(result.error || 'Registration failed');
+          dispatch({ type: 'SET_ERROR', error: result.error || ERROR_MESSAGES.SIGNUP_FAILED });
         }
       } finally {
-        setSubmitting(false);
+        dispatch({ type: 'END_SUBMITTING' });
       }
       return;
     }
 
-    setSubmitting(true);
+    dispatch({ type: 'START_SUBMITTING' });
     try {
-      const result = await signup(name, email, password, phone, role, undefined, {
+      const result = await signup(state.name, state.email, state.password, state.phone, state.role, undefined, {
         emailOtpVerified,
         phoneVerified: phoneOtpVerified,
       });
-      if (result.success) navigate(getPostAuthPath(result.profile));
-      else setError(result.error || 'Signup failed');
+      if (result.success) {
+        dispatch({ type: 'SET_SUCCESS', success: 'Registration successful! Redirecting...' });
+        setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
+      } else {
+        dispatch({ type: 'SET_ERROR', error: result.error || ERROR_MESSAGES.SIGNUP_FAILED });
+      }
+    } catch (e) {
+      const error = toAuthError(e);
+      dispatch({ type: 'SET_ERROR', error: error.message || ERROR_MESSAGES.SIGNUP_FAILED });
     } finally {
-      setSubmitting(false);
+      dispatch({ type: 'END_SUBMITTING' });
     }
   };
 
@@ -290,11 +302,11 @@ const SignupPage: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-border shadow-sm p-6 sm:p-7">
-          {error && <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{error}</div>}
-          {success && <div className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium flex items-center gap-2"><IconCheckCircle size={16} /> {success}</div>}
-          {verificationNotice && <div className="bg-blue-50 border border-blue-100 text-blue-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{verificationNotice}</div>}
+          {state.error && <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{state.error}</div>}
+          {state.success && <div className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium flex items-center gap-2"><IconCheckCircle size={16} /> {state.success}</div>}
+          {state.verificationNotice && <div className="bg-blue-50 border border-blue-100 text-blue-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium">{state.verificationNotice}</div>}
 
-          {role === 'passenger' && (
+          {state.role === 'passenger' && (
             <div className="mb-4 space-y-2">
               <div className="rounded-xl border border-border-light bg-surface-secondary p-4">
                 <p className="text-[12px] font-semibold text-gray-800">Quick signup options</p>
@@ -326,8 +338,8 @@ const SignupPage: React.FC = () => {
                   <button
                     key={roleOption.value}
                     type="button"
-                    onClick={() => setRole(roleOption.value)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${role === roleOption.value ? 'border-primary-500 bg-primary-50 text-primary-600' : 'border-border-light text-gray-400 hover:border-gray-300'}`}
+                    onClick={() => dispatch({ type: 'SET_FIELD', field: 'role', value: roleOption.value })}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${state.role === roleOption.value ? 'border-primary-500 bg-primary-50 text-primary-600' : 'border-border-light text-gray-400 hover:border-gray-300'}`}
                   >
                     {roleOption.icon}
                     <span className="text-[11px] font-semibold">{roleOption.label}</span>
@@ -337,15 +349,15 @@ const SignupPage: React.FC = () => {
               </div>
             </div>
 
-            {role === 'company' && (
+            {state.role === 'company' && (
               <>
                 <div>
                   <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Company Name</label>
-                  <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="e.g., Safari Express Ltd." className={fieldClasses} required />
+                  <input type="text" value={state.companyName} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'companyName', value: e.target.value })} placeholder="e.g., Safari Express Ltd." className={fieldClasses} required />
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Description</label>
-                  <textarea value={companyDescription} onChange={(e) => setCompanyDescription(e.target.value)} placeholder="Brief description…" rows={2} className={`${fieldClasses} resize-none`} />
+                  <textarea value={state.companyDescription} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'companyDescription', value: e.target.value })} placeholder="Brief description…" rows={2} className={`${fieldClasses} resize-none`} />
                 </div>
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-700 font-medium">
                   Company registrations require admin approval before activation.
@@ -353,13 +365,13 @@ const SignupPage: React.FC = () => {
               </>
             )}
 
-            {role === 'operator' && (
+            {state.role === 'operator' && (
               <div>
                 <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Company code</label>
                 <input
                   type="text"
-                  value={companyCode}
-                  onChange={(e) => setCompanyCode(e.target.value)}
+                  value={state.companyCode}
+                  onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'companyCode', value: e.target.value })}
                   placeholder="Ask your company admin for this code"
                   className={fieldClasses}
                   required
@@ -371,16 +383,16 @@ const SignupPage: React.FC = () => {
             )}
 
             <div>
-              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">{role === 'company' ? 'Owner name' : 'Full name'}</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={fieldClasses} required />
+              <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">{state.role === 'company' ? 'Owner name' : 'Full name'}</label>
+              <input type="text" value={state.name} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'name', value: e.target.value })} placeholder="Full name" className={fieldClasses} required />
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className={fieldClasses} required />
+              <input type="email" value={state.email} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'email', value: e.target.value })} placeholder="you@email.com" className={fieldClasses} required />
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Phone</label>
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+250 788 000 000" className={fieldClasses} required />
+              <input type="tel" value={state.phone} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'phone', value: e.target.value })} placeholder="+250 788 000 000" className={fieldClasses} required />
             </div>
 
             <div className="rounded-xl border border-border-light bg-surface-secondary p-4 space-y-3">
@@ -389,98 +401,38 @@ const SignupPage: React.FC = () => {
                 <p className="text-[11px] text-gray-400">You can verify now or continue and finish later in Settings.</p>
               </div>
 
-              <div className="rounded-xl border border-white bg-white p-3 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <IconMail size={16} className={emailOtpVerified ? 'text-emerald-500' : 'text-gray-300'} />
-                    <div>
-                      <p className="text-[12px] font-semibold text-gray-800">Email OTP</p>
-                      <p className="text-[11px] text-gray-400">
-                        {emailOtpVerified ? 'Verified for this email' : 'Send a 6-digit code to your email'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSendEmailOtp}
-                    disabled={sendingEmailOtp}
-                    className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
-                  >
-                    {sendingEmailOtp ? 'Sending...' : 'Send code'}
-                  </button>
-                </div>
+              <EmailVerificationStep
+                email={normalizedEmail}
+                verified={emailOtpVerified}
+                otp={state.emailOtp}
+                onOtpChange={(value) => dispatch({ type: 'SET_FIELD', field: 'emailOtp', value })}
+                onSend={handleSendEmailOtp}
+                onVerify={handleVerifyEmailOtp}
+                sending={state.sendingEmailOtp}
+                verifying={state.verifyingEmailOtp}
+                countdown={state.countdown}
+              />
 
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={emailOtp}
-                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter email OTP"
-                    className={fieldClasses}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyEmailOtp}
-                    disabled={verifyingEmailOtp}
-                    className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-                  >
-                    {verifyingEmailOtp ? 'Checking...' : 'Verify'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-white bg-white p-3 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <IconPhone size={16} className={phoneOtpVerified ? 'text-emerald-500' : 'text-gray-300'} />
-                    <div>
-                      <p className="text-[12px] font-semibold text-gray-800">Phone OTP</p>
-                      <p className="text-[11px] text-gray-400">
-                        {phoneOtpVerified ? 'Verified for this phone number' : 'Send an SMS code to confirm your number'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSendPhoneOtp}
-                    disabled={sendingPhoneOtp}
-                    className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-gray-700 transition-all hover:bg-surface-secondary disabled:opacity-60"
-                  >
-                    {sendingPhoneOtp ? 'Sending...' : 'Send SMS'}
-                  </button>
-                </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={phoneOtp}
-                    onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Enter phone OTP"
-                    className={fieldClasses}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyPhoneOtp}
-                    disabled={verifyingPhoneOtp || !phoneOtpSession}
-                    className="shrink-0 rounded-xl bg-primary-600 px-4 py-3 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
-                  >
-                    {verifyingPhoneOtp ? 'Checking...' : 'Verify'}
-                  </button>
-                </div>
-                <div id="signup-phone-recaptcha" />
-              </div>
+              <PhoneVerificationStep
+                phone={normalizedPhone}
+                verified={phoneOtpVerified}
+                otp={state.phoneOtp}
+                onOtpChange={(value) => dispatch({ type: 'SET_FIELD', field: 'phoneOtp', value })}
+                onSend={handleSendPhoneOtp}
+                onVerify={handleVerifyPhoneOtp}
+                sending={state.sendingPhoneOtp}
+                verifying={state.verifyingPhoneOtp}
+                hasSession={!!state.phoneOtpSession}
+              />
+              <div id="signup-phone-recaptcha" />
             </div>
 
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 6 characters" className={fieldClasses} required />
+              <input type="password" value={state.password} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'password', value: e.target.value })} placeholder="Min. 6 characters" className={fieldClasses} required />
             </div>
-            <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
-              {submitting ? 'Creating account...' : role === 'company' ? 'Submit registration' : 'Create account'}
+            <button type="submit" disabled={state.submitting} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
+              {state.submitting ? 'Creating account...' : state.role === 'company' ? 'Submit registration' : 'Create account'}
             </button>
           </form>
 

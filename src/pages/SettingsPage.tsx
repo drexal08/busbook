@@ -21,6 +21,8 @@ import {
   IconMail,
   IconPhone,
 } from '../components/Icons';
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../lib/auth/constants';
+import { toAuthError } from '../lib/auth/errors';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -60,9 +62,10 @@ const SettingsPage: React.FC = () => {
       setBusy('email-link');
       setFeedback();
       await resendVerificationEmail();
-      setFeedback('Verification email sent. Open the link in your inbox, then return here and refresh.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Could not send verification email');
+      setFeedback('', SUCCESS_MESSAGES.VERIFICATION_EMAIL_SENT);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
@@ -73,9 +76,10 @@ const SettingsPage: React.FC = () => {
       setBusy('refresh-email');
       setFeedback();
       await refreshAndSync();
-      setFeedback('Email verification status refreshed.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Could not refresh email verification');
+      setFeedback('', SUCCESS_MESSAGES.EMAIL_STATUS_REFRESHED);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
@@ -88,9 +92,10 @@ const SettingsPage: React.FC = () => {
       setBusy('email-otp-send');
       setFeedback();
       await sendEmailOtp(user.email);
-      setFeedback('Email OTP sent. Check your inbox for the 6-digit code.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Could not send email OTP');
+      setFeedback('', SUCCESS_MESSAGES.EMAIL_OTP_SENT);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
@@ -98,7 +103,7 @@ const SettingsPage: React.FC = () => {
 
   const handleVerifyEmailOtp = async () => {
     if (!user?.email || !emailOtp.trim()) {
-      setFeedback('', 'Enter the email OTP code first');
+      setFeedback('', ERROR_MESSAGES.EMAIL_OTP_REQUIRED);
       return;
     }
 
@@ -108,9 +113,10 @@ const SettingsPage: React.FC = () => {
       await verifyEmailOtp(user.email, emailOtp.trim());
       await updateUserVerificationFlags(user.id, { emailOtpVerified: true });
       await refreshUser();
-      setFeedback('Email OTP verified successfully.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Email OTP verification failed');
+      setFeedback('', SUCCESS_MESSAGES.EMAIL_OTP_VERIFIED);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
@@ -118,7 +124,7 @@ const SettingsPage: React.FC = () => {
 
   const handleSendPhoneOtp = async () => {
     if (!phone.trim()) {
-      setFeedback('', 'Enter your phone number first');
+      setFeedback('', ERROR_MESSAGES.PHONE_REQUIRED);
       return;
     }
 
@@ -130,9 +136,10 @@ const SettingsPage: React.FC = () => {
         'settings-phone-recaptcha'
       );
       setPhoneSession(session);
-      setFeedback('Phone OTP sent. Enter the SMS code to verify your number.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Could not send phone OTP');
+      setFeedback('', SUCCESS_MESSAGES.PHONE_OTP_SENT);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
@@ -140,7 +147,7 @@ const SettingsPage: React.FC = () => {
 
   const handleVerifyPhoneOtp = async () => {
     if (!phoneSession || !phoneOtp.trim() || !user) {
-      setFeedback('', 'Send the phone OTP and enter the SMS code first');
+      setFeedback('', ERROR_MESSAGES.PHONE_OTP_REQUIRED);
       return;
     }
 
@@ -154,9 +161,10 @@ const SettingsPage: React.FC = () => {
       });
       setPhoneSession(null);
       await refreshUser();
-      setFeedback('Phone number verified successfully.');
-    } catch (e: any) {
-      setFeedback('', e.message || 'Phone OTP verification failed');
+      setFeedback('', SUCCESS_MESSAGES.PHONE_OTP_VERIFIED);
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
     } finally {
       setBusy(null);
     }
