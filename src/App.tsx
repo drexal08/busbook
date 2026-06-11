@@ -7,6 +7,7 @@ import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import SearchResultsPage from './pages/SearchResultsPage';
 import BookingPage from './pages/BookingPage';
 import TicketPage from './pages/TicketPage';
@@ -14,6 +15,7 @@ import PassengerDashboard from './pages/PassengerDashboard';
 import CompanyDashboard from './pages/CompanyDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import SettingsPage from './pages/SettingsPage';
 import { IconHome } from './components/Icons';
 import { isFirebaseConfigured } from './lib/firebase';
 
@@ -41,10 +43,12 @@ const App: React.FC = () => {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/book/:tripId" element={<BookingPage />} />
               <Route path="/ticket/:bookingId" element={<TicketPage />} />
               <Route path="/dashboard" element={<PassengerDashboard />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="/company" element={<CompanyDashboard />} />
               <Route path="/operator" element={<OperatorDashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />

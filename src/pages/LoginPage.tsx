@@ -1,24 +1,63 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { IconMail, IconLock } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
-import { loginWithGoogle } from '../lib/auth';
+import { getPostAuthPath } from '../lib/userRoutes';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const { login, loginWithGoogle, loginWithFacebook } = useAuth();
   const navigate = useNavigate();
 
+  const authActions = useMemo(() => ([
+    {
+      label: 'Continue with Google',
+      className: 'border border-border text-gray-700 hover:bg-gray-50',
+      action: async () => loginWithGoogle(),
+      mark: 'G',
+      markClassName: 'bg-white text-gray-700 border border-border',
+    },
+    {
+      label: 'Continue with Facebook',
+      className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
+      action: async () => loginWithFacebook(),
+      mark: 'f',
+      markClassName: 'bg-white/20 text-white',
+    },
+  ]), [loginWithFacebook, loginWithGoogle]);
+
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError('');
-  const result = await login(email, password);
-  if (result.success) navigate('/');
-  else setError(result.error || 'Login failed');
-};
+    e.preventDefault();
+    if (submitting) return;
+
+    setSubmitting(true);
+    setError('');
+
+    const result = await login(email, password);
+    if (result.success) {
+      navigate(getPostAuthPath(result.profile));
+    } else {
+      setError(result.error || 'Login failed');
+    }
+
+    setSubmitting(false);
+  };
+
+  const handleSocialLogin = async (
+    action: () => Promise<{ success: boolean; error?: string; profile?: any }>
+  ) => {
+    setError('');
+    const result = await action();
+    if (result.success) {
+      navigate(getPostAuthPath(result.profile));
+      return;
+    }
+    setError(result.error || 'Social login failed');
+  };
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center py-12 px-4">
@@ -54,21 +93,35 @@ const LoginPage: React.FC = () => {
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   className="w-full bg-surface-secondary border border-border-light rounded-xl pl-10 pr-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all" placeholder="Enter password" required />
               </div>
+              <div className="mt-2 text-right">
+                <Link to="/forgot-password" className="text-[11px] font-semibold text-primary-600 hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
             </div>
-            <button type="submit"
-              className="w-full bg-primary-700 hover:bg-primary-800 text-white font-bold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
-              Log in
+            <button type="submit" disabled={submitting}
+              className="w-full bg-primary-700 hover:bg-primary-800 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
+              {submitting ? 'Logging in...' : 'Log in'}
             </button>
-            <button type="button" onClick={async () => {
-  try {
-    await loginWithGoogle();
-    navigate('/');
-  } catch (e: any) {
-    setError(e.message || 'Google login failed');
-  }
-}} className="w-full border border-border text-gray-700 font-semibold py-3 rounded-xl text-[13px] flex items-center justify-center gap-2 hover:bg-gray-50 transition-all">
-  <img src="https://www.google.com/favicon.ico" className="w-4 h-4" /> Continue with Google
-</button>
+            <div className="relative py-1">
+              <div className="border-t border-border-light" />
+              <span className="absolute inset-x-0 -top-1.5 mx-auto w-fit bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-300">
+                Or
+              </span>
+            </div>
+            {authActions.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleSocialLogin(item.action)}
+                className={`w-full font-semibold py-3 rounded-xl text-[13px] flex items-center justify-center gap-2 transition-all ${item.className}`}
+              >
+                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${item.markClassName}`}>
+                  {item.mark}
+                </span>
+                {item.label}
+              </button>
+            ))}
           </form>
 
           <div className="mt-5 text-center">

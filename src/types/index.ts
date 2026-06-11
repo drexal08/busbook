@@ -1,4 +1,5 @@
 export type UserRole = 'passenger' | 'company' | 'operator' | 'admin';
+export type AuthProvider = 'password' | 'google' | 'facebook';
 
 export interface User {
   id: string;
@@ -6,6 +7,10 @@ export interface User {
   email: string;
   role: UserRole;
   phone: string;
+  authProvider?: AuthProvider;
+  emailVerified?: boolean;
+  emailOtpVerified?: boolean;
+  phoneVerified?: boolean;
   companyId?: string;
   operatorStatus?: 'pending' | 'approved' | 'rejected';
   avatar?: string;

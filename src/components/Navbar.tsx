@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid } from './Icons';
+import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid, IconInfo } from './Icons';
 import { LogoFull } from './Logo';
+import { getDashboardPath, needsAccountVerification } from '../lib/userRoutes';
 
 const Navbar: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -14,16 +15,6 @@ const Navbar: React.FC = () => {
     logout();
     setMobileOpen(false);
     navigate('/');
-  };
-
-  const getDashboardPath = () => {
-    if (!user) return '/';
-    switch (user.role) {
-      case 'admin': return '/admin';
-      case 'company': return '/company';
-      case 'operator': return '/operator';
-      default: return '/dashboard';
-    }
   };
 
   const getDashboardIcon = () => {
@@ -73,7 +64,8 @@ const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center gap-1">
             {navLink('/', 'Home', <IconHome size={18} />)}
             {navLink('/search', 'Search', <IconSearch size={18} />)}
-            {isAuthenticated && navLink(getDashboardPath(), 'Dashboard', getDashboardIcon())}
+            {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
+            {isAuthenticated && navLink('/settings', 'Settings', <IconInfo size={18} />)}
           </div>
 
           {/* Desktop Right */}
@@ -91,6 +83,14 @@ const Navbar: React.FC = () => {
                     </span>
                   </div>
                 </div>
+                {needsAccountVerification(user) && (
+                  <Link
+                    to="/settings"
+                    className="hidden lg:inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                  >
+                    Verify account
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
                   className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all"
@@ -133,7 +133,8 @@ const Navbar: React.FC = () => {
           <div className="px-4 py-3 space-y-1">
             {navLink('/', 'Home', <IconHome size={18} />)}
             {navLink('/search', 'Search Routes', <IconSearch size={18} />)}
-            {isAuthenticated && navLink(getDashboardPath(), 'Dashboard', getDashboardIcon())}
+            {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
+            {isAuthenticated && navLink('/settings', 'Settings', <IconInfo size={18} />)}
             <hr className="my-2 border-border" />
             {isAuthenticated ? (
               <>
