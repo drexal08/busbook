@@ -6,11 +6,10 @@ import { IconShield, IconChart, IconBuilding, IconCalendar, IconTicket, IconChec
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { companies, approveCompany, rejectCompany, trips, bookings, routes } = useData();
   const [tab, setTab] = useState<string>('overview');
 
-  if (authLoading) return null;
   if (!isAuthenticated || !user || user.role !== 'admin') { navigate('/login'); return null; }
 
   const pending = companies.filter(c => c.status === 'pending');

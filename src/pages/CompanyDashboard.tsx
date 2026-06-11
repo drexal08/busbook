@@ -13,7 +13,7 @@ import { TripTemplate, User } from '../types';
 
 const CompanyDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const {
     companies,
     getCompanyTrips,
@@ -73,17 +73,6 @@ const CompanyDashboard: React.FC = () => {
   const cityOpts = useMemo(() => cities.map(c => ({ value: c, label: c })), []);
   const routeOpts = useMemo(() => routes.map(r => ({ value: r.id, label: `${r.origin} → ${r.destination}` })), [routes]);
   const busOpts = useMemo(() => buses.map(b => ({ value: b.id, label: `${b.name} (${b.plateNumber})` })), [buses]);
-  const timeOpts = useMemo(() => {
-    const opts: Array<{ value: string; label: string }> = [];
-    const pad2 = (n: number) => String(n).padStart(2, '0');
-    for (let h = 0; h < 24; h++) {
-      for (let m = 0; m < 60; m += 15) {
-        const v = `${pad2(h)}:${pad2(m)}`;
-        opts.push({ value: v, label: v });
-      }
-    }
-    return opts;
-  }, []);
 
   useEffect(() => {
     if (!cid) return;
@@ -177,7 +166,6 @@ const CompanyDashboard: React.FC = () => {
     setTab('schedules');
   };
 
-  if (authLoading) return null;
   if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
 
   const tabs = [
@@ -417,8 +405,8 @@ const CompanyDashboard: React.FC = () => {
               <Select options={routeOpts} value={tsRoute} onChange={setTsRoute} label="Route" placeholder="Select route" required />
               <Select options={busOpts} value={tsBus} onChange={setTsBus} label="Bus" placeholder="Select bus" required />
               <div className="grid grid-cols-2 gap-2">
-                <Select options={timeOpts} value={tsDep} onChange={setTsDep} label="Departure" placeholder="Select time" searchable required />
-                <Select options={timeOpts} value={tsArr} onChange={setTsArr} label="Arrival" placeholder="Select time" searchable required />
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required /></div>
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required /></div>
               </div>
               <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={tsPrice} onChange={e => setTsPrice(e.target.value)} className={field} required /></div>
               <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input type="number" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required /></div>
@@ -544,8 +532,8 @@ const CompanyDashboard: React.FC = () => {
               <Select options={busOpts} value={ntBus} onChange={setNtBus} label="Bus" placeholder="Select bus" required />
               <DatePicker value={ntDate} onChange={setNtDate} min={today} label="Date" required />
               <div className="grid grid-cols-2 gap-2">
-                <Select options={timeOpts} value={ntDep} onChange={setNtDep} label="Departure" placeholder="Select time" searchable required />
-                <Select options={timeOpts} value={ntArr} onChange={setNtArr} label="Arrival" placeholder="Select time" searchable required />
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required /></div>
+                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required /></div>
               </div>
               <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={ntPrice} onChange={e => setNtPrice(e.target.value)} className={field} required /></div>
               <div>

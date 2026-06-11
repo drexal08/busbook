@@ -32,10 +32,7 @@ function getPrimaryAuthProvider(firebaseUser: FirebaseUser): AuthProvider {
   return 'password';
 }
 
-function toUserProfile(
-  firebaseUser: FirebaseUser,
-  data: Partial<User>
-): User {
+function toUserProfile(firebaseUser: FirebaseUser, data: Partial<User>): User {
   return {
     id: firebaseUser.uid,
     name: data.name || firebaseUser.displayName || '',
@@ -81,11 +78,11 @@ async function ensureSocialProfile(firebaseUser: FirebaseUser, provider: SocialP
     return profile;
   }
 
+  const existing = snap.data() as Partial<User>;
   const nextProfile = toUserProfile(firebaseUser, {
-    ...(snap.data() as Partial<User>),
+    ...existing,
     authProvider: provider,
-    phoneVerified:
-      (snap.data() as Partial<User>).phoneVerified ?? !!firebaseUser.phoneNumber,
+    phoneVerified: existing.phoneVerified ?? !!firebaseUser.phoneNumber,
   });
 
   await setDoc(ref, nextProfile, { merge: true });
@@ -142,6 +139,7 @@ export async function register(
     await deleteUser(cred.user).catch(() => {});
     throw error;
   }
+
   const profile = await loadProfile(cred.user);
   return { user: cred.user, profile };
 }

@@ -45,22 +45,26 @@ const SignupPage: React.FC = () => {
   const normalizedPhone = phone.trim().replace(/\s+/g, '');
   const emailOtpVerified = !!normalizedEmail && emailOtpVerifiedFor === normalizedEmail;
   const phoneOtpVerified = !!normalizedPhone && phoneOtpVerifiedFor === normalizedPhone;
-  const socialOptions = useMemo(() => ([
-    {
-      label: 'Google',
-      action: async () => loginWithGoogle(),
-      className: 'border border-border text-gray-700 hover:bg-gray-50',
-      markClassName: 'bg-white text-gray-700 border border-border',
-      mark: 'G',
-    },
-    {
-      label: 'Facebook',
-      action: async () => loginWithFacebook(),
-      className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
-      markClassName: 'bg-white/20 text-white',
-      mark: 'f',
-    },
-  ]), [loginWithFacebook, loginWithGoogle]);
+
+  const socialOptions = useMemo(
+    () => [
+      {
+        label: 'Google',
+        action: async () => loginWithGoogle(),
+        className: 'border border-border text-gray-700 hover:bg-gray-50',
+        markClassName: 'bg-white text-gray-700 border border-border',
+        mark: 'G',
+      },
+      {
+        label: 'Facebook',
+        action: async () => loginWithFacebook(),
+        className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
+        markClassName: 'bg-white/20 text-white',
+        mark: 'f',
+      },
+    ],
+    [loginWithFacebook, loginWithGoogle]
+  );
 
   const resetVerificationMessages = () => {
     setError('');
@@ -159,127 +163,111 @@ const SignupPage: React.FC = () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (submitting) return;
+    e.preventDefault();
+    if (submitting) return;
 
-  resetVerificationMessages();
-  
-  if (password.length < 6) { 
-    setError('Password must be at least 6 characters'); 
-    return; 
-  }
+    resetVerificationMessages();
 
-  if (role === 'company' && !companyName.trim()) { 
-    setError('Company name is required'); 
-    return; 
-  }
-
-  if (role === 'operator' && !companyCode.trim()) {
-    setError('Company code is required');
-    return;
-  }
-
-  // For operators: verify company exists and is approved
-  if (role === 'operator') {
-    if (loading) {
-      setError('Company data is still loading. Please try again in a moment.');
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
-    const companyExists = companies.find(c => c.id === companyCode.trim() && c.status === 'approved');
-    if (!companyExists) {
-      setError('Invalid company code or company not approved');
+    if (role === 'company' && !companyName.trim()) {
+      setError('Company name is required');
       return;
     }
-  }
 
-  if (role === 'company') {
-    setSubmitting(true);
-    const companyId = `comp-${Date.now()}`;
-    try {
-      const result = await signup(
-        name,
-        email,
-        password,
-        phone,
-        role,
-        companyId,
-        { emailOtpVerified, phoneVerified: phoneOtpVerified }
-      );
-      if (!result.success || !result.userId) {
-        setError(result.error || 'Registration failed');
+    if (role === 'operator' && !companyCode.trim()) {
+      setError('Company code is required');
+      return;
+    }
+
+    if (role === 'operator') {
+      if (loading) {
+        setError('Company data is still loading. Please try again in a moment.');
         return;
       }
 
-      try {
-        await addCompanyWithId({ 
-          id: companyId, 
-          name: companyName, 
-          ownerId: result.userId, 
-          description: companyDescription || 'New bus company', 
-          status: 'pending', 
-          phone, 
-          email, 
-          createdAt: new Date().toISOString().split('T')[0] 
-        });
-      } catch (setupError) {
-        await deleteRegistration(result.userId);
-        throw setupError;
+      const companyExists = companies.find(
+        (company) => company.id === companyCode.trim() && company.status === 'approved'
+      );
+      if (!companyExists) {
+        setError('Invalid company code or company not approved');
+        return;
       }
-
-      setSuccess('Registration submitted. Complete remaining verification in Settings while approval is pending.');
-      setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
-    } catch (e: any) {
-      setError(e.message || 'Registration failed. Please try again.');
-    } finally {
-      setSubmitting(false);
     }
-    return;
-  }
 
-  // For operators: signup with companyId
-  if (role === 'operator') {
+    if (role === 'company') {
+      setSubmitting(true);
+      const companyId = `comp-${Date.now()}`;
+      try {
+        const result = await signup(name, email, password, phone, role, companyId, {
+          emailOtpVerified,
+          phoneVerified: phoneOtpVerified,
+        });
+        if (!result.success || !result.userId) {
+          setError(result.error || 'Registration failed');
+          return;
+        }
+
+        try {
+          await addCompanyWithId({
+            id: companyId,
+            name: companyName,
+            ownerId: result.userId,
+            description: companyDescription || 'New bus company',
+            status: 'pending',
+            phone,
+            email,
+            createdAt: new Date().toISOString().split('T')[0],
+          });
+        } catch (setupError) {
+          await deleteRegistration(result.userId);
+          throw setupError;
+        }
+
+        setSuccess('Registration submitted. Complete remaining verification in Settings while approval is pending.');
+        setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
+      } catch (e: any) {
+        setError(e.message || 'Registration failed. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (role === 'operator') {
+      setSubmitting(true);
+      try {
+        const result = await signup(name, email, password, phone, role, companyCode.trim(), {
+          emailOtpVerified,
+          phoneVerified: phoneOtpVerified,
+        });
+        if (result.success && result.userId) {
+          setSuccess('Registration submitted. Finish verification in Settings while company approval is pending.');
+          setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
+        } else {
+          setError(result.error || 'Registration failed');
+        }
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const result = await signup(
-        name,
-        email,
-        password,
-        phone,
-        role,
-        companyCode.trim(),
-        { emailOtpVerified, phoneVerified: phoneOtpVerified }
-      );
-      if (result.success && result.userId) {
-        setSuccess('Registration submitted. Finish verification in Settings while company approval is pending.');
-        setTimeout(() => navigate(getPostAuthPath(result.profile)), 1200);
-      } else {
-        setError(result.error || 'Registration failed');
-      }
+      const result = await signup(name, email, password, phone, role, undefined, {
+        emailOtpVerified,
+        phoneVerified: phoneOtpVerified,
+      });
+      if (result.success) navigate(getPostAuthPath(result.profile));
+      else setError(result.error || 'Signup failed');
     } finally {
       setSubmitting(false);
     }
-    return;
-  }
-
-  setSubmitting(true);
-  try {
-    const result = await signup(
-      name,
-      email,
-      password,
-      phone,
-      role,
-      undefined,
-      { emailOtpVerified, phoneVerified: phoneOtpVerified }
-    );
-    if (result.success) navigate(getPostAuthPath(result.profile));
-    else setError(result.error || 'Signup failed');
-  } finally {
-    setSubmitting(false);
-  }
-};
-
+  };
 
   const roles: { value: UserRole; label: string; desc: string; icon: React.ReactNode }[] = [
     { value: 'passenger', label: 'Passenger', desc: 'Book tickets', icon: <IconUser size={18} /> },
@@ -287,7 +275,8 @@ const SignupPage: React.FC = () => {
     { value: 'operator', label: 'Operator', desc: 'Scan tickets', icon: <IconScan size={18} /> },
   ];
 
-  const fieldClasses = "w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all";
+  const fieldClasses =
+    'w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all';
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center py-12 px-4">
@@ -308,12 +297,8 @@ const SignupPage: React.FC = () => {
           {role === 'passenger' && (
             <div className="mb-4 space-y-2">
               <div className="rounded-xl border border-border-light bg-surface-secondary p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[12px] font-semibold text-gray-800">Quick signup options</p>
-                    <p className="text-[11px] text-gray-400">Passenger accounts can start with social login and finish verification in Settings.</p>
-                  </div>
-                </div>
+                <p className="text-[12px] font-semibold text-gray-800">Quick signup options</p>
+                <p className="text-[11px] text-gray-400">Passenger accounts can start with social login and finish verification in Settings.</p>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {socialOptions.map((item) => (
                     <button
@@ -337,12 +322,16 @@ const SignupPage: React.FC = () => {
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">I am a</label>
               <div className="grid grid-cols-3 gap-2">
-                {roles.map(r => (
-                  <button key={r.value} type="button" onClick={() => setRole(r.value)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${role === r.value ? 'border-primary-500 bg-primary-50 text-primary-600' : 'border-border-light text-gray-400 hover:border-gray-300'}`}>
-                    {r.icon}
-                    <span className="text-[11px] font-semibold">{r.label}</span>
-                    <span className="text-[9px] text-gray-400">{r.desc}</span>
+                {roles.map((roleOption) => (
+                  <button
+                    key={roleOption.value}
+                    type="button"
+                    onClick={() => setRole(roleOption.value)}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${role === roleOption.value ? 'border-primary-500 bg-primary-50 text-primary-600' : 'border-border-light text-gray-400 hover:border-gray-300'}`}
+                  >
+                    {roleOption.icon}
+                    <span className="text-[11px] font-semibold">{roleOption.label}</span>
+                    <span className="text-[9px] text-gray-400">{roleOption.desc}</span>
                   </button>
                 ))}
               </div>
@@ -352,11 +341,11 @@ const SignupPage: React.FC = () => {
               <>
                 <div>
                   <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Company Name</label>
-                  <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g., Safari Express Ltd." className={fieldClasses} required />
+                  <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="e.g., Safari Express Ltd." className={fieldClasses} required />
                 </div>
                 <div>
                   <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Description</label>
-                  <textarea value={companyDescription} onChange={e => setCompanyDescription(e.target.value)} placeholder="Brief description…" rows={2} className={fieldClasses + " resize-none"} />
+                  <textarea value={companyDescription} onChange={(e) => setCompanyDescription(e.target.value)} placeholder="Brief description…" rows={2} className={`${fieldClasses} resize-none`} />
                 </div>
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-[11px] text-amber-700 font-medium">
                   Company registrations require admin approval before activation.
@@ -370,7 +359,7 @@ const SignupPage: React.FC = () => {
                 <input
                   type="text"
                   value={companyCode}
-                  onChange={e => setCompanyCode(e.target.value)}
+                  onChange={(e) => setCompanyCode(e.target.value)}
                   placeholder="Ask your company admin for this code"
                   className={fieldClasses}
                   required
@@ -383,23 +372,21 @@ const SignupPage: React.FC = () => {
 
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">{role === 'company' ? 'Owner name' : 'Full name'}</label>
-              <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" className={fieldClasses} required />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={fieldClasses} required />
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" className={fieldClasses} required />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className={fieldClasses} required />
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Phone</label>
-              <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+250 788 000 000" className={fieldClasses} required />
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+250 788 000 000" className={fieldClasses} required />
             </div>
 
             <div className="rounded-xl border border-border-light bg-surface-secondary p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[12px] font-semibold text-gray-800">Verification checks</p>
-                  <p className="text-[11px] text-gray-400">You can verify now or continue and finish later in Settings.</p>
-                </div>
+              <div>
+                <p className="text-[12px] font-semibold text-gray-800">Verification checks</p>
+                <p className="text-[11px] text-gray-400">You can verify now or continue and finish later in Settings.</p>
               </div>
 
               <div className="rounded-xl border border-white bg-white p-3 space-y-2">
@@ -429,7 +416,7 @@ const SignupPage: React.FC = () => {
                     inputMode="numeric"
                     maxLength={6}
                     value={emailOtp}
-                    onChange={e => setEmailOtp(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
                     placeholder="Enter email OTP"
                     className={fieldClasses}
                   />
@@ -471,7 +458,7 @@ const SignupPage: React.FC = () => {
                     inputMode="numeric"
                     maxLength={6}
                     value={phoneOtp}
-                    onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
                     placeholder="Enter phone OTP"
                     className={fieldClasses}
                   />
@@ -490,7 +477,7 @@ const SignupPage: React.FC = () => {
 
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" className={fieldClasses} required />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 6 characters" className={fieldClasses} required />
             </div>
             <button type="submit" disabled={submitting} className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-200 active:scale-[0.99] text-[13px]">
               {submitting ? 'Creating account...' : role === 'company' ? 'Submit registration' : 'Create account'}

@@ -1,34 +1,9 @@
 import { User, Company, Bus, Route, Trip, Booking } from '../types';
 
 export const cities = [
-  'Kigali',
-  'Huye (Butare)',
-  'Muhanga (Gitarama)',
-  'Nyanza',
-  'Gisagara',
-  'Nyaruguru',
-  'Nyamagabe (Gikongoro)',
-  'Ruhango',
-  'Kamonyi',
-  'Nyabihu',
-  'Rubavu (Gisenyi)',
-  'Rutsiro',
-  'Ngororero',
-  'Karongi (Kibuye)',
-  'Rusizi (Cyangugu)',
-  'Nyamasheke',
-  'Musanze (Ruhengeri)',
-  'Burera',
-  'Gakenke',
-  'Gicumbi (Byumba)',
-  'Rwamagana',
-  'Kayonza',
-  'Ngoma',
-  'Kirehe',
-  'Nyagatare',
-  'Gatsibo',
-  'Bugesera',
-  'Nyabugogo'
+  'Kigali', 'Huye (Butare)', 'Musanze (Ruhengeri)', 'Rubavu (Gisenyi)',
+  'Rusizi (Cyangugu)', 'Karongi (Kibuye)', 'Nyamagabe (Gikongoro)',
+  'Rwamagana', 'Kayonza', 'Nyanza', 'Bugesera'
 ];
 
 export const mockUsers: User[] = [

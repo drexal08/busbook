@@ -1,10 +1,21 @@
 [build]
-  command = "npm run build"
+  command = "npm install && npm install --prefix netlify/functions && npm run build"
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  NODE_VERSION = "20"
+
 [functions]
   node_bundler = "esbuild"
+  # firebase-admin uses native/grpc deps that break when esbuild bundles them (502 at cold start)
+  external_node_modules = ["firebase-admin", "@google-cloud/firestore"]
+
+[functions."initiate-cashin"]
+  timeout = 26
+
+[functions."paypack-webhook"]
+  timeout = 26
 
 [[redirects]]
   from = "/*"
