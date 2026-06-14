@@ -1,5 +1,5 @@
 import { API_ENDPOINTS } from './constants';
-import { toAuthError } from './errors';
+import { toAuthError, AuthError, AuthErrorType } from './errors';
 import { logger } from '../logger';
 import { analytics } from '../analytics';
 
@@ -20,17 +20,40 @@ export async function sendEmailOtp(email: string) {
       body: JSON.stringify({ email }),
     });
 
-    const data = await jsonOrThrow(res);
-    
+    // Check if response is ok before parsing JSON
     if (!res.ok) {
-      logger.error('Email OTP send failed', undefined, { email, statusCode: res.status, errorCode: data.errorCode });
-      analytics.trackEmailOtpSendFailed(email, data.error || 'Unknown error');
-      throw toAuthError(data.error || 'Failed to send email OTP');
+      let errorData: any = {};
+      try {
+        errorData = await res.json();
+      } catch (e) {
+        // If JSON parsing fails, use status text
+        errorData = { error: res.statusText || 'HTTP error' };
+      }
+      
+      logger.error('Email OTP send failed', undefined, { 
+        email, 
+        statusCode: res.status, 
+        errorCode: errorData.errorCode,
+        error: errorData.error 
+      });
+      analytics.trackEmailOtpSendFailed(email, errorData.error || `HTTP ${res.status}`);
+      
+      // Provide more specific error messages
+      if (res.status === 429) {
+        throw new AuthError(AuthErrorType.RATE_LIMITED, errorData.error || 'Too many OTP requests. Please wait a few minutes.', 429);
+      }
+      if (res.status === 500 && errorData.errorCode === 'MISSING_ENV') {
+        throw new AuthError(AuthErrorType.CONFIGURATION_ERROR, 'Email service is not configured. Please contact support.', 500);
+      }
+      
+      throw toAuthError(errorData.error || 'Failed to send email OTP');
     }
 
+    const data = await jsonOrThrow(res);
+    
     logger.logVerificationEvent('email_otp_sent', { email, expiresInMinutes: data.expiresInMinutes });
     analytics.trackEmailOtpSent(email, data.expiresInMinutes);
-    return data as { sent: boolean; expiresInMinutes: number };
+    return data as { sent: boolean; expiresInMinutes: number; devMode?: boolean };
   } catch (error) {
     logger.error('Email OTP send error', error as Error, { email });
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -49,15 +72,37 @@ export async function verifyEmailOtp(email: string, code: string) {
       body: JSON.stringify({ email, code }),
     });
 
-    const data = await jsonOrThrow(res);
-    
+    // Check if response is ok before parsing JSON
     if (!res.ok) {
-      logger.error('Email OTP verification failed', undefined, { email, statusCode: res.status, errorCode: data.errorCode });
-      const errorMessage = data.error || 'Failed to verify email OTP';
+      let errorData: any = {};
+      try {
+        errorData = await res.json();
+      } catch (e) {
+        errorData = { error: res.statusText || 'HTTP error' };
+      }
+      
+      logger.error('Email OTP verification failed', undefined, { 
+        email, 
+        statusCode: res.status, 
+        errorCode: errorData.errorCode,
+        error: errorData.error 
+      });
+      
+      const errorMessage = errorData.error || 'Failed to verify email OTP';
       analytics.trackEmailOtpVerificationFailed(email, errorMessage, 1);
+      
+      if (res.status === 429) {
+        throw new AuthError(AuthErrorType.RATE_LIMITED, errorData.error || 'Too many attempts. Please wait.', 429);
+      }
+      if (errorData.errorCode === 'TOO_MANY_ATTEMPTS') {
+        throw new AuthError(AuthErrorType.TOO_MANY_ATTEMPTS, errorData.error, 429);
+      }
+      
       throw toAuthError(errorMessage);
     }
 
+    const data = await jsonOrThrow(res);
+    
     logger.logVerificationEvent('email_otp_verified', { email });
     analytics.trackEmailOtpVerified(email, 1);
     return data as { verified: boolean };

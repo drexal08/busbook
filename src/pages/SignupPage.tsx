@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { UserRole } from '../types';
-import { IconUser, IconBuilding, IconScan, IconCheckCircle } from '../components/Icons';
+import { IconUser, IconBuilding, IconScan, IconCheckCircle, IconGoogle, IconFacebook } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
 import { EmailVerificationStep, PhoneVerificationStep } from '../components/auth';
 import { deleteRegistration } from '../lib/auth';
@@ -48,15 +48,15 @@ const SignupPage: React.FC = () => {
         label: 'Google',
         action: async () => loginWithGoogle(),
         className: 'border border-border text-gray-700 hover:bg-surface-secondary',
-        markClassName: 'bg-white text-gray-700 border border-border',
-        mark: 'G',
+
+        icon: <IconGoogle size={18} />,
       },
       {
         label: 'Facebook',
         action: async () => loginWithFacebook(),
         className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
-        markClassName: 'bg-white/20 text-white',
-        mark: 'f',
+
+        icon: <IconFacebook size={18} />,
       },
     ],
     [loginWithFacebook, loginWithGoogle]
@@ -319,9 +319,9 @@ const SignupPage: React.FC = () => {
                       onClick={() => handleSocialSignup(item.action)}
                       className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition-all ${item.className}`}
                     >
-                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${item.markClassName}`}>
-                        {item.mark}
-                      </span>
+                      {item.icon && <span className="inline-flex">{item.icon}</span>}
+
+
                       Continue with {item.label}
                     </button>
                   ))}

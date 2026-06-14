@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IconMail, IconLock } from '../components/Icons';
+import { IconMail, IconLock, IconGoogle, IconFacebook } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
 import { getPostAuthPath } from '../lib/userRoutes';
 import { ERROR_MESSAGES, LOADING_MESSAGES } from '../lib/auth/constants';
@@ -20,15 +20,15 @@ const LoginPage: React.FC = () => {
       label: 'Continue with Google',
       className: 'border border-border text-gray-700 hover:bg-surface-secondary',
       action: async () => loginWithGoogle(),
-      mark: 'G',
-      markClassName: 'bg-white text-gray-700 border border-border',
+      icon: <IconGoogle size={18} />,
+
     },
     {
       label: 'Continue with Facebook',
       className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
       action: async () => loginWithFacebook(),
-      mark: 'f',
-      markClassName: 'bg-white/20 text-white',
+      icon: <IconFacebook size={18} />,
+
     },
   ]), [loginWithFacebook, loginWithGoogle]);
 
@@ -128,9 +128,9 @@ const LoginPage: React.FC = () => {
                 onClick={() => handleSocialLogin(item.action)}
                 className={`w-full font-semibold py-3 rounded-xl text-[13px] flex items-center justify-center gap-2 transition-all ${item.className}`}
               >
-                <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${item.markClassName}`}>
-                  {item.mark}
-                </span>
+                {item.icon && <span className="inline-flex">{item.icon}</span>}
+
+
                 {item.label}
               </button>
             ))}
