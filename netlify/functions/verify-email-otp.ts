@@ -125,7 +125,6 @@ async function verifyRecaptchaToken(token: string): Promise<boolean> {
     return true;
   }
 }
-}
 
 export const handler = async (event: ApiEvent): Promise<JsonResponse> => {
   if (event.httpMethod === 'OPTIONS') {
