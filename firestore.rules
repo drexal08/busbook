@@ -1,0 +1,423 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // users/{uid}
+    //   name:string, email:string, phone:string, role:string
+    //   companyId:string optional, operatorStatus:string optional
+    //   authProvider:string optional, emailVerified:bool optional
+    //   emailOtpVerified:bool optional, phoneVerified:bool optional
+    //   avatar:string optional, createdAt:string/timestamp optional
+    //
+    // companies/{companyId}
+    //   name:string, ownerId:string, description:string, status:string
+    //   phone:string, email:string, createdAt:string/timestamp optional
+    //
+    // routes/{routeId}
+    //   companyId:string, origin:string, destination:string
+    //   distance:number, duration:string
+    //
+    // buses/{busId}
+    //   companyId:string, name:string, plateNumber:string
+    //   totalSeats:number, layout:string, amenities:list<string>
+    //
+    // trips/{tripId}
+    //   routeId:string, companyId:string, busId:string, date:string
+    //   departureTime:string, arrivalTime:string, price:number
+    //   onlineSeats:number, availableSeats:number, totalSeats:number
+    //   bookedSeats:list<number>, status:string
+    //
+    // tripTemplates/{templateId}
+    //   companyId:string, routeId:string, busId:string
+    //   departureTime:string, arrivalTime:string, price:number
+    //   onlineSeats:number, totalSeats:number, daysOfWeek:list
+    //   sellDaysAhead:number, active:bool
+    //
+    // bookings/{bookingId}
+    //   payment-created records. Public get and demo scan update are kept
+    //   temporarily for the current QR demo flow.
+    //
+    // payments/{paymentRef}
+    //   server-created payment state, readable by passenger/company/admin.
+    //
+    // emailOtps/{docId}
+    //   server-only OTP storage.
+    //
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUserData() {
+      return currentUser().data;
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return hasProfile() && currentUserData().role == 'admin';
+    }
+
+    function hasCompany(companyId) {
+      return hasProfile() && currentUserData().companyId == companyId;
+    }
+
+    function isCompanyAdmin(companyId) {
+      return hasCompany(companyId) && currentUserData().role == 'company';
+    }
+
+    function isCompanyStaff(companyId) {
+      return hasCompany(companyId) &&
+        (currentUserData().role == 'company' ||
+          (currentUserData().role == 'operator' && currentUserData().operatorStatus == 'approved'));
+    }
+
+    function isApprovedCompany(companyId) {
+      return exists(/databases/$(database)/documents/companies/$(companyId)) &&
+        get(/databases/$(database)/documents/companies/$(companyId)).data.status == 'approved';
+    }
+
+    function validString(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function validOptionalString(data, field, min, max) {
+      return !(field in data) || validString(data[field], min, max);
+    }
+
+    function validOptionalBool(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function validCreatedAt(data) {
+      return !('createdAt' in data) || data.createdAt is timestamp || validString(data.createdAt, 8, 40);
+    }
+
+    function validEmail(email) {
+      return validString(email, 3, 254) &&
+        email.matches('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$');
+    }
+
+    function validPhone(phone) {
+      return validString(phone, 5, 24);
+    }
+
+    function validDateString(date) {
+      return validString(date, 10, 10) && date.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function validTimeString(time) {
+      return validString(time, 4, 5) && time.matches('^\\d{1,2}:\\d{2}$');
+    }
+
+    function validAmenities(amenities) {
+      return amenities is list && amenities.size() <= 20;
+    }
+
+    function validSeatList(seats) {
+      return seats is list && seats.size() <= 80;
+    }
+
+    function immutable(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function onlyChanged(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function validUser(data) {
+      return data.keys().hasOnly([
+          'id', 'name', 'email', 'phone', 'role', 'companyId', 'operatorStatus',
+          'avatar', 'createdAt', 'authProvider', 'emailVerified',
+          'emailOtpVerified', 'phoneVerified'
+        ]) &&
+        data.keys().hasAll(['id', 'name', 'email', 'phone', 'role', 'createdAt']) &&
+        validString(data.id, 1, 128) &&
+        validString(data.name, 1, 120) &&
+        validEmail(data.email) &&
+        validPhone(data.phone) &&
+        data.role in ['passenger', 'company', 'operator', 'admin'] &&
+        validOptionalString(data, 'companyId', 1, 80) &&
+        validOptionalString(data, 'operatorStatus', 3, 16) &&
+        (!('operatorStatus' in data) || data.operatorStatus in ['pending', 'approved', 'rejected']) &&
+        validOptionalString(data, 'avatar', 1, 1000) &&
+        validOptionalString(data, 'authProvider', 5, 20) &&
+        (!('authProvider' in data) || data.authProvider in ['password', 'google', 'facebook']) &&
+        validOptionalBool(data, 'emailVerified') &&
+        validOptionalBool(data, 'emailOtpVerified') &&
+        validOptionalBool(data, 'phoneVerified') &&
+        validCreatedAt(data);
+    }
+
+    function validSelfUserCreate(userId) {
+      return signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.id == userId &&
+        request.resource.data.role in ['passenger', 'company', 'operator'] &&
+        validUser(request.resource.data);
+    }
+
+    function validSelfUserUpdate(userId) {
+      return signedIn() &&
+        request.auth.uid == userId &&
+        validUser(request.resource.data) &&
+        immutable(['id', 'role', 'companyId', 'operatorStatus', 'createdAt']);
+    }
+
+    function validCompany(data) {
+      return data.keys().hasOnly(['id', 'name', 'ownerId', 'logo', 'description', 'status', 'phone', 'email', 'createdAt']) &&
+        data.keys().hasAll(['name', 'ownerId', 'description', 'status', 'phone', 'email']) &&
+        validString(data.name, 1, 120) &&
+        validString(data.ownerId, 1, 128) &&
+        validOptionalString(data, 'logo', 1, 1000) &&
+        validString(data.description, 1, 1000) &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        validPhone(data.phone) &&
+        validEmail(data.email) &&
+        validCreatedAt(data);
+    }
+
+    function validCompanyStatusOnlyUpdate() {
+      return validCompany(request.resource.data) &&
+        onlyChanged(['status']) &&
+        request.resource.data.status in ['approved', 'rejected', 'pending'];
+    }
+
+    function validRoute(data) {
+      return data.keys().hasOnly(['companyId', 'origin', 'destination', 'distance', 'duration']) &&
+        data.keys().hasAll(['companyId', 'origin', 'destination', 'distance', 'duration']) &&
+        validString(data.companyId, 1, 80) &&
+        validString(data.origin, 1, 120) &&
+        validString(data.destination, 1, 120) &&
+        data.distance is number && data.distance > 0 && data.distance < 2000 &&
+        validString(data.duration, 1, 40);
+    }
+
+    function validBus(data) {
+      return data.keys().hasOnly(['companyId', 'name', 'plateNumber', 'totalSeats', 'layout', 'amenities']) &&
+        data.keys().hasAll(['companyId', 'name', 'plateNumber', 'totalSeats', 'layout', 'amenities']) &&
+        validString(data.companyId, 1, 80) &&
+        validString(data.name, 1, 80) &&
+        validString(data.plateNumber, 1, 40) &&
+        data.totalSeats is number && data.totalSeats > 0 && data.totalSeats <= 80 &&
+        data.layout in ['2-2', '2-1'] &&
+        validAmenities(data.amenities);
+    }
+
+    function validTrip(data) {
+      return data.keys().hasOnly([
+          'routeId', 'companyId', 'busId', 'date', 'departureTime', 'arrivalTime',
+          'price', 'onlineSeats', 'availableSeats', 'totalSeats', 'bookedSeats',
+          'status', 'templateId', 'source', 'cancelledAt', 'cancelReason'
+        ]) &&
+        data.keys().hasAll([
+          'routeId', 'companyId', 'busId', 'date', 'departureTime', 'arrivalTime',
+          'price', 'onlineSeats', 'availableSeats', 'totalSeats', 'bookedSeats', 'status'
+        ]) &&
+        validString(data.routeId, 1, 128) &&
+        validString(data.companyId, 1, 80) &&
+        validString(data.busId, 1, 128) &&
+        validDateString(data.date) &&
+        validTimeString(data.departureTime) &&
+        validTimeString(data.arrivalTime) &&
+        data.price is number && data.price >= 0 && data.price <= 1000000 &&
+        data.onlineSeats is number && data.onlineSeats >= 0 && data.onlineSeats <= data.totalSeats &&
+        data.availableSeats is number && data.availableSeats >= 0 && data.availableSeats <= data.onlineSeats &&
+        data.totalSeats is number && data.totalSeats > 0 && data.totalSeats <= 80 &&
+        validSeatList(data.bookedSeats) &&
+        data.status in ['scheduled', 'departed', 'cancelled'] &&
+        validOptionalString(data, 'templateId', 1, 160) &&
+        (!('source' in data) || data.source in ['template', 'manual']) &&
+        (!('cancelledAt' in data) || data.cancelledAt is timestamp || validString(data.cancelledAt, 8, 40)) &&
+        validOptionalString(data, 'cancelReason', 1, 500);
+    }
+
+    function validTripTemplate(data) {
+      return data.keys().hasOnly([
+          'companyId', 'routeId', 'busId', 'departureTime', 'arrivalTime',
+          'price', 'onlineSeats', 'totalSeats', 'daysOfWeek', 'sellDaysAhead',
+          'active', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'companyId', 'routeId', 'busId', 'departureTime', 'arrivalTime',
+          'price', 'onlineSeats', 'totalSeats', 'daysOfWeek', 'sellDaysAhead', 'active'
+        ]) &&
+        validString(data.companyId, 1, 80) &&
+        validString(data.routeId, 1, 128) &&
+        validString(data.busId, 1, 128) &&
+        validTimeString(data.departureTime) &&
+        validTimeString(data.arrivalTime) &&
+        data.price is number && data.price >= 0 && data.price <= 1000000 &&
+        data.onlineSeats is number && data.onlineSeats >= 0 && data.onlineSeats <= data.totalSeats &&
+        data.totalSeats is number && data.totalSeats > 0 && data.totalSeats <= 80 &&
+        data.daysOfWeek is list && data.daysOfWeek.size() >= 1 && data.daysOfWeek.size() <= 7 &&
+        data.sellDaysAhead is number && data.sellDaysAhead >= 1 && data.sellDaysAhead <= 30 &&
+        data.active is bool &&
+        validCreatedAt(data) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp || validString(data.updatedAt, 8, 40));
+    }
+
+    function validBooking(data) {
+      return data.keys().hasOnly([
+          'id', 'tripId', 'passengerId', 'companyId', 'seatNumber',
+          'passengerName', 'passengerPhone', 'origin', 'destination',
+          'departureDate', 'departureTime', 'price', 'status', 'qrCode', 'createdAt'
+        ]) &&
+        data.keys().hasAll([
+          'tripId', 'passengerId', 'companyId', 'seatNumber',
+          'passengerName', 'passengerPhone', 'origin', 'destination',
+          'departureDate', 'departureTime', 'price', 'status', 'qrCode', 'createdAt'
+        ]) &&
+        validOptionalString(data, 'id', 1, 128) &&
+        validString(data.tripId, 1, 128) &&
+        validString(data.passengerId, 1, 128) &&
+        validString(data.companyId, 1, 80) &&
+        data.seatNumber is number && data.seatNumber > 0 && data.seatNumber <= 80 &&
+        validString(data.passengerName, 1, 120) &&
+        validPhone(data.passengerPhone) &&
+        validString(data.origin, 1, 120) &&
+        validString(data.destination, 1, 120) &&
+        validDateString(data.departureDate) &&
+        validTimeString(data.departureTime) &&
+        data.price is number && data.price >= 0 && data.price <= 1000000 &&
+        data.status in ['confirmed', 'cancelled', 'used'] &&
+        validString(data.qrCode, 1, 256) &&
+        validCreatedAt(data);
+    }
+
+    function canReadBooking(data) {
+      return isAdmin() ||
+        (signedIn() && data.passengerId == request.auth.uid) ||
+        (signedIn() && hasCompany(data.companyId));
+    }
+
+    function demoScanUpdate() {
+      return validBooking(request.resource.data) &&
+        onlyChanged(['status']) &&
+        resource.data.status == 'confirmed' &&
+        request.resource.data.status == 'used';
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if validSelfUserCreate(userId) || isAdmin();
+      allow update: if validSelfUserUpdate(userId) ||
+        isAdmin() ||
+        (
+          signedIn() &&
+          isCompanyAdmin(resource.data.companyId) &&
+          resource.data.role == 'operator' &&
+          validUser(request.resource.data) &&
+          onlyChanged(['operatorStatus']) &&
+          request.resource.data.operatorStatus in ['approved', 'rejected']
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /companies/{companyId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        validCompany(request.resource.data);
+      allow update: if isAdmin() && validCompanyStatusOnlyUpdate();
+      allow delete: if isAdmin();
+    }
+
+    match /routes/{routeId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        validRoute(request.resource.data) &&
+        isCompanyAdmin(request.resource.data.companyId) &&
+        isApprovedCompany(request.resource.data.companyId);
+      allow update: if signedIn() &&
+        validRoute(request.resource.data) &&
+        immutable(['companyId']) &&
+        isCompanyAdmin(resource.data.companyId) &&
+        isApprovedCompany(resource.data.companyId);
+      allow delete: if isAdmin();
+    }
+
+    match /buses/{busId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        validBus(request.resource.data) &&
+        isCompanyAdmin(request.resource.data.companyId) &&
+        isApprovedCompany(request.resource.data.companyId);
+      allow update: if signedIn() &&
+        validBus(request.resource.data) &&
+        immutable(['companyId']) &&
+        isCompanyAdmin(resource.data.companyId) &&
+        isApprovedCompany(resource.data.companyId);
+      allow delete: if isAdmin();
+    }
+
+    match /trips/{tripId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        validTrip(request.resource.data) &&
+        isCompanyAdmin(request.resource.data.companyId) &&
+        isApprovedCompany(request.resource.data.companyId);
+      allow update: if signedIn() &&
+        validTrip(request.resource.data) &&
+        immutable(['companyId', 'routeId', 'busId', 'date', 'bookedSeats']) &&
+        isCompanyAdmin(resource.data.companyId) &&
+        isApprovedCompany(resource.data.companyId);
+      allow delete: if isAdmin();
+    }
+
+    match /tripTemplates/{templateId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        validTripTemplate(request.resource.data) &&
+        isCompanyAdmin(request.resource.data.companyId) &&
+        isApprovedCompany(request.resource.data.companyId);
+      allow update: if signedIn() &&
+        validTripTemplate(request.resource.data) &&
+        immutable(['companyId']) &&
+        isCompanyAdmin(resource.data.companyId) &&
+        isApprovedCompany(resource.data.companyId);
+      allow delete: if signedIn() &&
+        isCompanyAdmin(resource.data.companyId) &&
+        isApprovedCompany(resource.data.companyId);
+    }
+
+    match /bookings/{bookingId} {
+      // Compatibility exception: direct ticket URL and scan demo need document get by ID.
+      allow get: if true;
+      allow list: if canReadBooking(resource.data);
+      allow create: if false;
+      // Compatibility exception: demo scanner may mark a confirmed ticket as used.
+      allow update: if demoScanUpdate();
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentRef} {
+      allow get, list: if isAdmin() ||
+        (signedIn() && resource.data.passengerId == request.auth.uid) ||
+        (signedIn() && hasCompany(resource.data.companyId));
+      allow create, update, delete: if false;
+    }
+
+    match /emailOtps/{docId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
