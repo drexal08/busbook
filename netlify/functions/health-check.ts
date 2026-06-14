@@ -34,7 +34,7 @@ interface HealthCheckResult {
 // Firebase admin app singleton
 let adminApp: admin.app.App | null = null;
 
-function json(statusCode: number, body: Record<string, unknown>): JsonResponse {
+function json(statusCode: number, body: Record<string, unknown> | HealthCheckResult): JsonResponse {
   return {
     statusCode,
     headers: {

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import admin from 'firebase-admin';
-import nodemailer from 'nodemailer';
+
+const nodemailer = require('nodemailer') as any;
 import { generateEmailOtpTemplate } from './email-templates';
 
 interface JsonResponse {
@@ -174,7 +175,7 @@ async function verifyRecaptchaToken(token: string): Promise<boolean> {
   }
 }
 
-function createTransporter(): nodemailer.Transporter {
+function createTransporter(): any {
   return nodemailer.createTransport({
     host: stripWrappingQuotes(getRequiredEnv('SMTP_HOST')),
     port: Number(stripWrappingQuotes(getRequiredEnv('SMTP_PORT'))),
