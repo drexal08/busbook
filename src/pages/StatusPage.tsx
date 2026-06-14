@@ -9,8 +9,7 @@ import {
   IconMail, 
   IconPhone, 
   IconTicket, 
-  IconDatabase,
-  IconSettings
+  IconDatabase
 } from '../components/Icons';
 
 interface HealthCheckResult {
