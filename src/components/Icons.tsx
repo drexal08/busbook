@@ -23,7 +23,7 @@ import {
   MoreSquare,
   Paper,
   Password,
-  Refresh,
+
   Scan,
   Search,
   ShieldDone,
@@ -101,7 +101,7 @@ export const IconEye: React.FC<IconProps> = (props) => renderIconly(Show, props)
 export const IconLock: React.FC<IconProps> = (props) => renderIconly(Lock, props);
 export const IconInfo: React.FC<IconProps> = (props) => renderIconly(InfoSquare, props);
 export const IconPassword: React.FC<IconProps> = (props) => renderIconly(Password, props);
-export const IconRefresh: React.FC<IconProps> = (props) => renderIconly(Refresh, props);
+export const IconRefresh: React.FC<IconProps> = (props) => renderIconly(Swap, props);
 export const IconAnalytics: React.FC<IconProps> = (props) => renderIconly(Chart, props);
 export const IconCamera: React.FC<IconProps> = (props) => renderIconly(Camera, props);
 export const IconShieldSuccess: React.FC<IconProps> = (props) => renderIconly(ShieldDone, props);
