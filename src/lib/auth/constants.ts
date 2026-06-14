@@ -1,6 +1,14 @@
 export const RECAPTCHA_CONTAINER_IDS = {
   SIGNUP: 'signup-phone-recaptcha',
   SETTINGS: 'settings-phone-recaptcha',
+  LOGIN: 'login-phone-recaptcha',
+} as const;
+
+export const RECAPTCHA_CONFIG = {
+  MIN_SCORE: 0.5,
+  TIMEOUT: 60000,
+  SIZE: 'invisible' as const,
+  BADGE: 'bottomright' as const,
 } as const;
 
 export const VERIFICATION_CONFIG = {
@@ -30,6 +38,7 @@ export const EMAIL_TEMPLATES = {
 export const API_ENDPOINTS = {
   SEND_EMAIL_OTP: '/.netlify/functions/send-email-otp',
   VERIFY_EMAIL_OTP: '/.netlify/functions/verify-email-otp',
+  HEALTH_CHECK: '/.netlify/functions/health-check',
 } as const;
 
 export const ERROR_MESSAGES = {

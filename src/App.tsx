@@ -16,6 +16,7 @@ import CompanyDashboard from './pages/CompanyDashboard';
 import OperatorDashboard from './pages/OperatorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import SettingsPage from './pages/SettingsPage';
+import StatusPage from './pages/StatusPage';
 import { IconHome } from './components/Icons';
 import { isFirebaseConfigured } from './lib/firebase';
 
@@ -52,6 +53,7 @@ const App: React.FC = () => {
               <Route path="/company" element={<CompanyDashboard />} />
               <Route path="/operator" element={<OperatorDashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/status" element={<StatusPage />} />
               <Route path="/scan" element={<ScanPage />} />
               <Route path="*" element={
                 <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">

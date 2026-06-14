@@ -14,6 +14,7 @@ interface ApiEvent {
 interface VerifyEmailOtpBody {
   email: string;
   code: string;
+  recaptchaToken?: string;
 }
 
 // Firebase admin app singleton
@@ -90,6 +91,42 @@ function getFirebaseAdmin(): admin.app.App {
   return adminApp;
 }
 
+async function verifyRecaptchaToken(token: string): Promise<boolean> {
+  const secret = stripWrappingQuotes(process.env.RECAPTCHA_SECRET_KEY || '');
+  
+  if (!secret) {
+    console.warn('[RECAPTCHA] No secret key configured, skipping verification');
+    return true;
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+    });
+
+    const result = await response.json() as { success: boolean; score?: number; 'error-codes'?: string[] };
+    
+    if (!result.success) {
+      console.error('[RECAPTCHA] Verification failed:', result['error-codes']);
+      return false;
+    }
+
+    const minScore = Number(process.env.RECAPTCHA_MIN_SCORE || '0.5');
+    if (result.score !== undefined && result.score < minScore) {
+      console.error(`[RECAPTCHA] Score too low: ${result.score} < ${minScore}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[RECAPTCHA] Verification error:', error);
+    return true;
+  }
+}
+}
+
 export const handler = async (event: ApiEvent): Promise<JsonResponse> => {
   if (event.httpMethod === 'OPTIONS') {
     return json(200, {});
@@ -110,6 +147,22 @@ export const handler = async (event: ApiEvent): Promise<JsonResponse> => {
 
     if (!code) {
       return json(400, { error: 'Verification code is required' });
+    }
+
+    // reCAPTCHA verification
+    if (body.recaptchaToken) {
+      const recaptchaValid = await verifyRecaptchaToken(body.recaptchaToken);
+      if (!recaptchaValid) {
+        return json(400, { 
+          error: 'reCAPTCHA verification failed. Please try again.',
+          errorCode: 'RECAPTCHA_FAILED'
+        });
+      }
+    } else if (process.env.REQUIRE_RECAPTCHA === 'true') {
+      return json(400, { 
+        error: 'reCAPTCHA token is required',
+        errorCode: 'RECAPTCHA_REQUIRED'
+      });
     }
 
     // Firebase initialization

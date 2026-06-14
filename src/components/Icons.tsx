@@ -104,3 +104,5 @@ export const IconAnalytics: React.FC<IconProps> = (props) => renderIconly(Chart,
 export const IconCamera: React.FC<IconProps> = (props) => renderIconly(Camera, props);
 export const IconShieldSuccess: React.FC<IconProps> = (props) => renderIconly(ShieldDone, props);
 export const IconShieldError: React.FC<IconProps> = (props) => renderIconly(ShieldFail, props);
+export const IconStatus: React.FC<IconProps> = (props) => renderIconly(Activity, props);
+export const IconDatabase: React.FC<IconProps> = (props) => renderIconly(Category, props);

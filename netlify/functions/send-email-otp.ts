@@ -17,6 +17,7 @@ interface ApiEvent {
 
 interface SendEmailOtpBody {
   email: string;
+  recaptchaToken?: string;
 }
 
 interface RateLimitEntry {
@@ -138,6 +139,41 @@ function isOtpDevMode(): boolean {
   return parseBool(process.env.OTP_DEV_MODE);
 }
 
+async function verifyRecaptchaToken(token: string): Promise<boolean> {
+  const secret = stripWrappingQuotes(process.env.RECAPTCHA_SECRET_KEY || '');
+  
+  if (!secret) {
+    console.warn('[RECAPTCHA] No secret key configured, skipping verification');
+    return true;
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
+    });
+
+    const result = await response.json() as { success: boolean; score?: number; 'error-codes'?: string[] };
+    
+    if (!result.success) {
+      console.error('[RECAPTCHA] Verification failed:', result['error-codes']);
+      return false;
+    }
+
+    const minScore = Number(process.env.RECAPTCHA_MIN_SCORE || '0.5');
+    if (result.score !== undefined && result.score < minScore) {
+      console.error(`[RECAPTCHA] Score too low: ${result.score} < ${minScore}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[RECAPTCHA] Verification error:', error);
+    return true;
+  }
+}
+
 function createTransporter(): nodemailer.Transporter {
   return nodemailer.createTransport({
     host: stripWrappingQuotes(getRequiredEnv('SMTP_HOST')),
@@ -178,6 +214,22 @@ export const handler = async (event: ApiEvent): Promise<JsonResponse> => {
 
     if (!email || !email.includes('@')) {
       return json(400, { error: 'A valid email address is required' });
+    }
+
+    // reCAPTCHA verification
+    if (body.recaptchaToken) {
+      const recaptchaValid = await verifyRecaptchaToken(body.recaptchaToken);
+      if (!recaptchaValid) {
+        return json(400, { 
+          error: 'reCAPTCHA verification failed. Please try again.',
+          errorCode: 'RECAPTCHA_FAILED'
+        });
+      }
+    } else if (process.env.REQUIRE_RECAPTCHA === 'true') {
+      return json(400, { 
+        error: 'reCAPTCHA token is required',
+        errorCode: 'RECAPTCHA_REQUIRED'
+      });
     }
 
     // Rate limiting
