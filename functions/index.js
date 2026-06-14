@@ -113,7 +113,10 @@ exports.paypackWebhook = onRequest(async (req, res) => {
     .update(rawBody)
     .digest('base64');
 
-  if (hash !== requestSignature) {
+  const expected = Buffer.from(hash);
+  const received = Buffer.from(requestSignature);
+
+  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
     console.error('Invalid webhook signature');
     return res.status(401).json({ error: 'Invalid signature' });
   }

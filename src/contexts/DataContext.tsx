@@ -18,10 +18,11 @@ import {
 } from '../lib/firestore';
 import { createBooking as fbCreateBooking, validateBooking as fbValidateBooking } from '../lib/bookings';
 // FIX 1: Added 'collection' to the firebase/firestore imports
-import { onSnapshot, collection } from 'firebase/firestore'; 
+import { onSnapshot, collection, query, where } from 'firebase/firestore'; 
 // FIX 2: Imported your Firestore instance 'db'
 import { db } from '../lib/firebase'; 
 import { ensureUpcomingTripsFromTemplates } from '../lib/tripGeneration';
+import { useAuth } from './AuthContext';
 
 interface DataContextType {
   companies: Company[];
@@ -65,6 +66,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -73,15 +75,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tripTemplates, setTripTemplates] = useState<TripTemplate[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Real-time bookings listener
+  // Real-time bookings listener scoped to the current role. The /scan demo page
+  // uses its own direct lookup and is intentionally left unchanged.
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+    if (authLoading) return;
+
+    if (!user) {
+      setBookings([]);
+      return;
+    }
+
+    let bookingsQuery;
+    if (user.role === 'admin') {
+      bookingsQuery = collection(db, 'bookings');
+    } else if ((user.role === 'company' || user.role === 'operator') && user.companyId) {
+      bookingsQuery = query(collection(db, 'bookings'), where('companyId', '==', user.companyId));
+    } else {
+      bookingsQuery = query(collection(db, 'bookings'), where('passengerId', '==', user.id));
+    }
+
+    const unsubscribe = onSnapshot(bookingsQuery, (snapshot) => {
       const updated = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(updated);
     });
     
     return () => unsubscribe();
-  }, []);
+  }, [authLoading, user]);
 
   // Initial load
   useEffect(() => {

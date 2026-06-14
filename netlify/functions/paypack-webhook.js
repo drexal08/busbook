@@ -45,12 +45,15 @@ export const handler = async (event) => {
     return { statusCode: 401, body: JSON.stringify({ error: 'Missing signature' }) };
   }
 
-  const hash = crypto
+const hash = crypto
     .createHmac('sha256', secret)
     .update(event.body)
     .digest('base64');
 
-  if (hash !== requestSignature) {
+  const expected = Buffer.from(hash);
+  const received = Buffer.from(requestSignature);
+
+  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
     console.error('Invalid signature');
     return { statusCode: 401, body: JSON.stringify({ error: 'Invalid signature' }) };
   }
