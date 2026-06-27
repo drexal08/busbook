@@ -313,17 +313,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create: if validSelfUserCreate(userId) || isAdmin();
-      allow update: if validSelfUserUpdate(userId) ||
-        isAdmin() ||
-        (
-          signedIn() &&
-          isCompanyAdmin(resource.data.companyId) &&
-          resource.data.role == 'operator' &&
-          validUser(request.resource.data) &&
-          onlyChanged(['operatorStatus']) &&
-          request.resource.data.operatorStatus in ['approved', 'rejected']
-        );
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.id == userId &&
+        request.resource.data.role in ['passenger', 'company', 'operator'];
+      allow update: if signedIn() &&
+        request.auth.uid == userId &&
+        (request.resource.data.role == resource.data.role || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -413,10 +409,6 @@ service cloud.firestore {
     }
 
     match /emailOtps/{docId} {
-      allow read, write: if false;
-    }
-
-    match /{document=**} {
       allow read, write: if false;
     }
   }
