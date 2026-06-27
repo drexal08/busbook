@@ -209,6 +209,14 @@ const layoutRows = useMemo(() => {
 
   const handleBooking = async () => {
     if (!selectedSeat || !user) return;
+    
+    // Validate phone number
+    const cleanPhone = paymentPhone.replace(/\s+/g, '');
+    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
+      setPaymentError('Invalid phone number. Must start with 078, 079, 073, 072 or +250');
+      return;
+    }
+    
     setPaymentError('');
     setStep('processing');
     try {
@@ -423,8 +431,17 @@ const layoutRows = useMemo(() => {
                   ))}
                   <div>
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Phone number</label>
-                    <input type="tel" value={paymentPhone} onChange={e => setPaymentPhone(e.target.value)} placeholder="+250 788 000 000"
+                    <input type="tel" value={paymentPhone} onChange={e => {
+                      const value = e.target.value.replace(/\s+/g, '');
+                      // Allow only digits and + sign
+                      if (/^[0+]*$/.test(value)) {
+                        setPaymentPhone(value);
+                      }
+                    }} placeholder="0781234567 or +250788123456"
                       className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-2.5 text-xs focus:border-primary-400 outline-none transition-all" />
+                    {paymentPhone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(paymentPhone.replace(/\s+/g, '')) && (
+                      <p className="text-[10px] text-red-500 mt-1">Must start with 078, 079, 073, 072 or +250</p>
+                    )}
                   </div>
                   <button onClick={handleBooking} disabled={!paymentPhone}
                     className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all">

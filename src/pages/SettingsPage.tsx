@@ -128,11 +128,18 @@ const SettingsPage: React.FC = () => {
       return;
     }
 
+    // Validate phone number
+    const cleanPhone = phone.trim().replace(/\s+/g, '');
+    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
+      setFeedback('', 'Invalid phone number. Must start with 078, 079, 073, 072 or +250');
+      return;
+    }
+
     try {
       setBusy('phone-otp-send');
       setFeedback();
       const session = await requestCurrentUserPhoneOtp(
-        phone.trim().replace(/\s+/g, ''),
+        cleanPhone,
         'settings-phone-recaptcha'
       );
       setPhoneSession(session);
@@ -321,10 +328,19 @@ const SettingsPage: React.FC = () => {
                   <input
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+250 788 000 000"
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\s+/g, '');
+                      // Allow only digits and + sign
+                      if (/^[0+]*$/.test(value)) {
+                        setPhone(value);
+                      }
+                    }}
+                    placeholder="0781234567 or +250788123456"
                     className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                   />
+                  {phone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(phone.replace(/\s+/g, '')) && (
+                    <p className="text-[10px] text-red-500 col-span-3">Must start with 078, 079, 073, 072 or +250</p>
+                  )}
                   <button
                     type="button"
                     onClick={handleSendPhoneOtp}

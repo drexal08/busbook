@@ -25,7 +25,7 @@ const LoginPage: React.FC = () => {
     },
     {
       label: 'Continue with Facebook',
-      className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
+      className: 'border border-border text-gray-700 hover:bg-surface-secondary',
       action: async () => loginWithFacebook(),
       icon: <IconFacebook size={18} />,
 

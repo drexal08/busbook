@@ -54,7 +54,7 @@ const SignupPage: React.FC = () => {
       {
         label: 'Facebook',
         action: async () => loginWithFacebook(),
-        className: 'bg-[#1877F2] text-white hover:bg-[#1667d8]',
+        className: 'border border-border text-gray-700 hover:bg-surface-secondary',
 
         icon: <IconFacebook size={18} />,
       },
@@ -174,6 +174,13 @@ const SignupPage: React.FC = () => {
 
     if (state.password.length < VERIFICATION_CONFIG.PASSWORD.MIN_LENGTH) {
       dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.PASSWORD_TOO_SHORT });
+      return;
+    }
+
+    // Validate phone number
+    const cleanPhone = normalizedPhone;
+    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
+      dispatch({ type: 'SET_ERROR', error: 'Invalid phone number. Must start with 078, 079, 073, 072 or +250' });
       return;
     }
 
@@ -392,7 +399,16 @@ const SignupPage: React.FC = () => {
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Phone</label>
-              <input type="tel" value={state.phone} onChange={(e) => dispatch({ type: 'SET_FIELD', field: 'phone', value: e.target.value })} placeholder="+250 788 000 000" className={fieldClasses} required />
+              <input type="tel" value={state.phone} onChange={(e) => {
+                const value = e.target.value.replace(/\s+/g, '');
+                // Allow only digits and + sign
+                if (/^[0+]*$/.test(value)) {
+                  dispatch({ type: 'SET_FIELD', field: 'phone', value });
+                }
+              }} placeholder="0781234567 or +250788123456" className={fieldClasses} required />
+              {state.phone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(state.phone.replace(/\s+/g, '')) && (
+                <p className="text-[10px] text-red-500 mt-1">Must start with 078, 079, 073, 072 or +250</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-border-light bg-surface-secondary p-4 space-y-3">
