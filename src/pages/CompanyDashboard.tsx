@@ -67,7 +67,13 @@ const CompanyDashboard: React.FC = () => {
   const routes = getCompanyRoutes(cid);
   const buses = getCompanyBuses(cid);
   const templates = getCompanyTripTemplates(cid);
-  const today = new Date().toISOString().split('T')[0];
+  const formatDateInput = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const today = formatDateInput(new Date());
   const revenue = bookings.filter(b => b.status !== 'cancelled').reduce((s, b) => s + b.price, 0);
 
   const cityOpts = useMemo(() => cities.map(c => ({ value: c, label: c })), []);
@@ -275,8 +281,8 @@ const CompanyDashboard: React.FC = () => {
               <Select options={cityOpts} value={nrOrigin} onChange={setNrOrigin} label="Origin" placeholder="Select city" searchable required />
               <Select options={cityOpts} value={nrDest} onChange={setNrDest} label="Destination" placeholder="Select city" searchable required />
               <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Distance (km)</label><input type="number" value={nrDist} onChange={e => setNrDist(e.target.value)} className={field} required /></div>
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Duration</label><input type="text" value={nrDur} onChange={e => setNrDur(e.target.value)} placeholder="2h 30min" className={field} required /></div>
+                <div><label htmlFor="route-distance" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Distance (km)</label><input id="route-distance" type="number" value={nrDist} onChange={e => setNrDist(e.target.value)} className={field} required title="Distance in kilometers" aria-label="Distance in kilometers" /></div>
+                <div><label htmlFor="route-duration" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Duration</label><input id="route-duration" type="text" value={nrDur} onChange={e => setNrDur(e.target.value)} placeholder="2h 30min" className={field} required title="Route duration" aria-label="Route duration" /></div>
               </div>
               <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Add route</button>
             </form>
@@ -304,9 +310,9 @@ const CompanyDashboard: React.FC = () => {
           <div className="bg-white rounded-xl border border-border p-6 max-w-lg">
             <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-1.5"><IconPlus size={15} /> Add bus</h3>
             <form onSubmit={handleAddBus} className="space-y-3">
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Bus name</label><input type="text" value={nbName} onChange={e => setNbName(e.target.value)} placeholder="RE-003" className={field} required /></div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Plate number</label><input type="text" value={nbPlate} onChange={e => setNbPlate(e.target.value)} placeholder="RA 999 Z" className={field} required /></div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Seats</label><input type="number" value={nbSeats} onChange={e => setNbSeats(e.target.value)} className={field} required /></div>
+              <div><label htmlFor="bus-name" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Bus name</label><input id="bus-name" type="text" value={nbName} onChange={e => setNbName(e.target.value)} placeholder="RE-003" className={field} required title="Bus name" aria-label="Bus name" /></div>
+              <div><label htmlFor="bus-plate" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Plate number</label><input id="bus-plate" type="text" value={nbPlate} onChange={e => setNbPlate(e.target.value)} placeholder="RA 999 Z" className={field} required title="Plate number" aria-label="Plate number" /></div>
+              <div><label htmlFor="bus-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Seats</label><input id="bus-seats" type="number" value={nbSeats} onChange={e => setNbSeats(e.target.value)} className={field} required title="Seat capacity" aria-label="Seat capacity" /></div>
               <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Add bus</button>
             </form>
           </div>
@@ -405,12 +411,12 @@ const CompanyDashboard: React.FC = () => {
               <Select options={routeOpts} value={tsRoute} onChange={setTsRoute} label="Route" placeholder="Select route" required />
               <Select options={busOpts} value={tsBus} onChange={setTsBus} label="Bus" placeholder="Select bus" required />
               <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required /></div>
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required /></div>
+                <div><label htmlFor="schedule-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="schedule-departure" type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required title="Schedule departure time" aria-label="Schedule departure time" /></div>
+                <div><label htmlFor="schedule-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="schedule-arrival" type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required title="Schedule arrival time" aria-label="Schedule arrival time" /></div>
               </div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={tsPrice} onChange={e => setTsPrice(e.target.value)} className={field} required /></div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input type="number" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required /></div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input type="number" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required /></div>
+              <div><label htmlFor="schedule-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input id="schedule-price" type="number" value={tsPrice} onChange={e => setTsPrice(e.target.value)} className={field} required title="Ticket price" aria-label="Ticket price" /></div>
+              <div><label htmlFor="schedule-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input id="schedule-online-seats" type="number" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required title="Online seats" aria-label="Online seats" /></div>
+              <div><label htmlFor="schedule-sell-days" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input id="schedule-sell-days" type="number" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required title="Sell days ahead" aria-label="Sell days ahead" /></div>
               <div>
                 <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">Days of week</label>
                 <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-700">
@@ -474,10 +480,14 @@ const CompanyDashboard: React.FC = () => {
                 </button>
               </div>
             </div>
-            <div className="space-y-2">{trips
-              .filter(t => tripView === 'upcoming' ? t.date >= today : t.date < today)
-              .sort((a,b) => a.date.localeCompare(b.date))
-              .map(t => {
+            <div className="space-y-2">{(() => {
+              const visibleTrips = trips
+                .filter(t => tripView === 'upcoming' ? t.date >= today : t.date < today)
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+              return (
+                <>
+                  {visibleTrips.map(t => {
               const r = getRouteInfo(t.routeId);
               return (
                 <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between gap-3">
@@ -518,8 +528,12 @@ const CompanyDashboard: React.FC = () => {
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.status === 'scheduled' ? 'bg-emerald-50 text-emerald-600' : t.status === 'cancelled' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-500'}`}>{t.status}</span>
                   </div>
                 </div>
+                    );
+                  })}
+                  {visibleTrips.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No trips</div>}
+                </>
               );
-            })}{trips.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No trips</div>}</div>
+            })()}</div>
           </div>
         )}
 
@@ -532,21 +546,24 @@ const CompanyDashboard: React.FC = () => {
               <Select options={busOpts} value={ntBus} onChange={setNtBus} label="Bus" placeholder="Select bus" required />
               <DatePicker value={ntDate} onChange={setNtDate} min={today} label="Date" required />
               <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required /></div>
-                <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required /></div>
+                <div><label htmlFor="trip-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="trip-departure" type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required title="Trip departure time" aria-label="Trip departure time" /></div>
+                <div><label htmlFor="trip-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="trip-arrival" type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required title="Trip arrival time" aria-label="Trip arrival time" /></div>
               </div>
-              <div><label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input type="number" value={ntPrice} onChange={e => setNtPrice(e.target.value)} className={field} required /></div>
+              <div><label htmlFor="trip-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input id="trip-price" type="number" value={ntPrice} onChange={e => setNtPrice(e.target.value)} className={field} required title="Trip price" aria-label="Trip price" /></div>
               <div>
-  <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
+  <label htmlFor="trip-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
     Online seats
   </label>
   <input
+    id="trip-online-seats"
     type="number"
     value={ntOnlineSeats}
     onChange={e => setNtOnlineSeats(e.target.value)}
     placeholder="Seats available to book online"
     className={field}
     required
+    title="Online seats"
+    aria-label="Online seats"
   />
   <p className="text-[10px] text-gray-400 mt-1">
     Physical capacity: {buses.find(b => b.id === ntBus)?.totalSeats ?? '—'} seats total
@@ -579,21 +596,29 @@ const CompanyDashboard: React.FC = () => {
             {op.operatorStatus === 'pending' && (
               <>
                 <button 
+                  type="button"
+                  aria-label="Approve operator"
+                  title="Approve operator"
                   onClick={async () => {
                     await updateDoc(doc(db, 'users', op.id), { operatorStatus: 'approved' });
                     flash('Operator approved');
                   }}
                   className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 flex items-center justify-center"
                 >
+                  <span className="sr-only">Approve operator</span>
                   <IconCheck size={14} />
                 </button>
                 <button 
+                  type="button"
+                  aria-label="Reject operator"
+                  title="Reject operator"
                   onClick={async () => {
                     await updateDoc(doc(db, 'users', op.id), { operatorStatus: 'rejected' });
                     flash('Operator rejected');
                   }}
                   className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center"
                 >
+                  <span className="sr-only">Reject operator</span>
                   <IconX size={14} />
                 </button>
               </>
