@@ -410,12 +410,14 @@ const layoutRows = useMemo(() => {
                     </div>
                   )}
                   {[
-                    { key: 'mtn_momo' as const, name: 'MTN MoMo', sub: 'Mobile Money', color: 'bg-yellow-400 text-yellow-900', disabled: false },
-                    { key: 'airtel_money' as const, name: 'Airtel Money', sub: 'Mobile Money', color: 'bg-red-500 text-white', disabled: false },
+                    { key: 'mtn_momo' as const, name: 'MTN MoMo', sub: 'Mobile Money', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/MTN_Logo.svg/1200px-MTN_Logo.svg.png', disabled: false },
+                    { key: 'airtel_money' as const, name: 'Airtel Money', sub: 'Mobile Money', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Airtel_logo.svg/1200px-Airtel_logo.svg.png', disabled: false },
                   ].map(m => (
                     <button key={m.key} onClick={() => !m.disabled && setPaymentMethod(m.key)} disabled={m.disabled}
                       className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${m.disabled ? 'opacity-50 cursor-not-allowed border-border-light' : paymentMethod === m.key ? 'border-primary-400 bg-primary-50' : 'border-border-light hover:border-gray-300'}`}>
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-extrabold ${m.color}`}>{m.name.substring(0, 3).toUpperCase()}</div>
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-border-light overflow-hidden">
+                        <img src={m.logo} alt={m.name} className="w-7 h-7 object-contain" />
+                      </div>
                       <div><div className="text-xs font-semibold text-gray-800">{m.name}</div><div className="text-[10px] text-gray-400">{m.sub}</div></div>
                     </button>
                   ))}
