@@ -1,5 +1,13 @@
 export type UserRole = 'passenger' | 'company' | 'operator' | 'admin';
 export type AuthProvider = 'password' | 'google' | 'facebook';
+export type CompanyStatus = 'pending' | 'approved' | 'rejected';
+export type OperatorStatus = 'pending' | 'approved' | 'rejected';
+export type TripStatus = 'scheduled' | 'departed' | 'cancelled';
+export type BookingStatus = 'confirmed' | 'cancelled' | 'used';
+export type PaymentStatus = 'pending' | 'completed' | 'failed';
+export type PaymentMethod = 'mtn_momo' | 'airtel_money';
+export type BusLayout = '2-2' | '2-1';
+export type TripSource = 'template' | 'manual';
 
 export interface User {
   id: string;
@@ -12,7 +20,7 @@ export interface User {
   emailOtpVerified?: boolean;
   phoneVerified?: boolean;
   companyId?: string;
-  operatorStatus?: 'pending' | 'approved' | 'rejected';
+  operatorStatus?: OperatorStatus;
   avatar?: string;
   createdAt: string;
   password?: string;
@@ -24,7 +32,7 @@ export interface Company {
   ownerId: string;
   logo?: string;
   description: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: CompanyStatus;
   phone: string;
   email: string;
   createdAt: string;
@@ -36,7 +44,7 @@ export interface Bus {
   name: string;
   plateNumber: string;
   totalSeats: number;
-  layout: '2-2' | '2-1';
+  layout: BusLayout;
   amenities: string[];
 }
 
@@ -79,9 +87,9 @@ export interface Trip {
   availableSeats: number;
   totalSeats: number;
   bookedSeats: number[];
-  status: 'scheduled' | 'departed' | 'cancelled';
+  status: TripStatus;
   templateId?: string;
-  source?: 'template' | 'manual';
+  source?: TripSource;
   cancelledAt?: string;
   cancelReason?: string;
 }
@@ -99,9 +107,11 @@ export interface Booking {
   departureDate: string;
   departureTime: string;
   price: number;
-  status: 'confirmed' | 'cancelled' | 'used';
+  status: BookingStatus;
   qrCode: string;
   createdAt: string;
+  validatedAt?: string;
+  validatedBy?: string;
 }
 
 export interface Payment {
@@ -113,8 +123,8 @@ export interface Payment {
   seatNumber: number;
   amount: number;
   phone: string;
-  paymentMethod?: 'mtn_momo' | 'airtel_money';
-  status: 'pending' | 'completed' | 'failed';
+  paymentMethod?: PaymentMethod;
+  status: PaymentStatus;
   passengerName: string;
   passengerPhone: string;
   origin: string;

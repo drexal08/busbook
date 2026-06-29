@@ -13,20 +13,28 @@ const firebaseConfig = {
 
 export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
 
+function missingFirebaseProxy<T extends object>(serviceName: string): T {
+  return new Proxy({} as T, {
+    get() {
+      throw new Error(`Firebase ${serviceName} is not configured. Please set VITE_FIREBASE_* environment variables.`);
+    },
+  });
+}
+
 const app = isFirebaseConfigured ? (getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)) : null;
 
-export const auth: Auth | null = app ? getAuth(app) : null;
-export const db: Firestore | null = app ? getFirestore(app) : null;
+export const auth: Auth = app ? getAuth(app) : missingFirebaseProxy<Auth>('Auth');
+export const db: Firestore = app ? getFirestore(app) : missingFirebaseProxy<Firestore>('Firestore');
 
 export function requireAuth(): Auth {
-  if (!auth) {
+  if (!isFirebaseConfigured) {
     throw new Error('Firebase Auth is not configured. Please set VITE_FIREBASE_* environment variables.');
   }
   return auth;
 }
 
 export function requireDb(): Firestore {
-  if (!db) {
+  if (!isFirebaseConfigured) {
     throw new Error('Firebase Firestore is not configured. Please set VITE_FIREBASE_* environment variables.');
   }
   return db;

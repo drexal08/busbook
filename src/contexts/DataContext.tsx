@@ -13,14 +13,10 @@ import {
   deleteTripTemplate as fbDeleteTripTemplate,
   cancelTrip as fbCancelTrip,
   updateCompanyStatus,
-  decrementTripSeat,
   fetchCompanyBookings
 } from '../lib/firestore';
-import { createBooking as fbCreateBooking, validateBooking as fbValidateBooking } from '../lib/bookings';
-// FIX 1: Added 'collection' to the firebase/firestore imports
-import { onSnapshot, collection, query, where } from 'firebase/firestore'; 
-// FIX 2: Imported your Firestore instance 'db'
-import { db } from '../lib/firebase'; 
+import { onSnapshot, collection, query, where } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase'; 
 import { ensureUpcomingTripsFromTemplates } from '../lib/tripGeneration';
 import { useAuth } from './AuthContext';
 
@@ -34,8 +30,6 @@ interface DataContextType {
   loading: boolean;
   refreshCompanyData: (companyId: string) => Promise<void>;
   searchTrips: (origin: string, destination: string, date: string) => Trip[];
-  createBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<Booking>;
-  cancelBooking: (bookingId: string) => void;
   cancelTrip: (tripId: string, reason?: string) => Promise<void>;
   approveCompany: (companyId: string) => Promise<void>;
   rejectCompany: (companyId: string) => Promise<void>;
@@ -51,7 +45,7 @@ interface DataContextType {
   ) => Promise<void>;
   deleteTripTemplate: (templateId: string) => Promise<void>;
   generateUpcomingTrips: (companyId: string) => Promise<{ created: number }>;
-  validateTicket: (qrCode: string) => Promise<{ valid: boolean; booking?: Booking; error?: string }>;
+  validateTicket: (qrCode: string) => Promise<{ valid: boolean; booking?: Booking; message?: string; error?: string }>;
   getPassengerBookings: (passengerId: string) => Booking[];
   getCompanyTrips: (companyId: string) => Trip[];
   getCompanyBookings: (companyId: string) => Booking[];
@@ -97,27 +91,42 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onSnapshot(bookingsQuery, (snapshot) => {
       const updated = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Booking));
       setBookings(updated);
+    }, (error) => {
+      console.error('Bookings snapshot error:', error);
     });
-    
+
     return () => unsubscribe();
   }, [authLoading, user]);
+
+  // Real-time trips subscription - ensures generated trips appear instantly
+  useEffect(() => {
+    const tripsListener = onSnapshot(
+      collection(db, 'trips'),
+      (snapshot) => {
+        const updated = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Trip));
+        setTrips(updated);
+      },
+      (error) => {
+        console.error('Trips snapshot error:', error);
+      }
+    );
+    return () => tripsListener();
+  }, []);
 
   // Initial load
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [c, r, b, t, tt] = await Promise.all([
+        const [c, r, b, tt] = await Promise.all([
           fetchCompanies(),
           fetchRoutes(),
           fetchBuses(),
-          fetchTrips(),
           fbFetchTripTemplates()
         ]);
         setCompanies(c);
         setRoutes(r);
         setBuses(b);
-        setTrips(t);
         setTripTemplates(tt);
       } catch (e) {
         console.error('DataContext load error:', e);
@@ -156,45 +165,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return matchRoute && matchDate && isApproved && trip.status === 'scheduled' && hasSeats;
     });
   }, [trips, routes, companies]);
-
-  const createBooking = useCallback(async (bookingData: Omit<Booking, 'id' | 'createdAt'>) => {
-    const bookingId = await fbCreateBooking(bookingData);
-    await decrementTripSeat(bookingData.tripId, bookingData.seatNumber);
-    const booking: Booking = {
-      ...bookingData,
-      id: bookingId,
-      qrCode: bookingId,
-      createdAt: new Date().toISOString()
-    };
-    setBookings(prev => [...prev, booking]);
-    setTrips(prev => prev.map(t => {
-      if (t.id === booking.tripId) {
-        const newBooked = [...t.bookedSeats, booking.seatNumber];
-        return {
-          ...t,
-          bookedSeats: newBooked,
-          availableSeats: t.onlineSeats - newBooked.length
-        };
-      }
-      return t;
-    }));
-    return booking;
-  }, []);
-
-  const cancelBooking = useCallback((bookingId: string) => {
-    const booking = bookings.find(b => b.id === bookingId);
-    if (!booking) return;
-    setBookings(prev => prev.map(b =>
-      b.id === bookingId ? { ...b, status: 'cancelled' as const } : b
-    ));
-    setTrips(prev => prev.map(t => {
-      if (t.id === booking.tripId) {
-        const newBooked = t.bookedSeats.filter(s => s !== booking.seatNumber);
-        return { ...t, bookedSeats: newBooked, availableSeats: t.onlineSeats - newBooked.length };
-      }
-      return t;
-    }));
-  }, [bookings]);
 
   const approveCompany = useCallback(async (companyId: string) => {
     await updateCompanyStatus(companyId, 'approved');
@@ -281,8 +251,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [tripTemplates]);
 
   const validateTicket = useCallback(async (qrCode: string) => {
-    const result = await fbValidateBooking(qrCode);
-    return result as { valid: boolean; booking?: Booking; error?: string };
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) {
+      return { valid: false, error: 'Please log in again before validating tickets' };
+    }
+
+    const res = await fetch('/.netlify/functions/validate-ticket', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ bookingId: qrCode }),
+    });
+
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { valid: false, error: result.error || 'Ticket validation failed' };
+    }
+    return result as { valid: boolean; booking?: Booking; message?: string; error?: string };
   }, []);
 
   const getPassengerBookings = useCallback((passengerId: string) =>
@@ -316,7 +303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{
       companies, trips, bookings, routes, buses, tripTemplates, loading,
       refreshCompanyData,
-      searchTrips, createBooking, cancelBooking, cancelTrip,
+      searchTrips, cancelTrip,
       approveCompany, rejectCompany, addCompany, addCompanyWithId,
       addRoute, addBus, addTrip,
       addTripTemplate, updateTripTemplate, deleteTripTemplate, generateUpcomingTrips,

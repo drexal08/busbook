@@ -89,7 +89,7 @@ const OperatorDashboard: React.FC = () => {
     const r = await validateTicket(targetId);
     setResult({ 
       valid: r.valid, 
-      message: r.error || 'Ticket validated — passenger may board.', 
+      message: r.error || r.message || 'Ticket validated - passenger may board.', 
       booking: r.booking 
     });
   } catch (error) {

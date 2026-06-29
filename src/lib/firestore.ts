@@ -2,7 +2,7 @@ import { db } from './firebase';
 import {
   collection, doc, addDoc, updateDoc, getDocs,
   query, where, onSnapshot, serverTimestamp,
-  setDoc, getDoc, deleteDoc
+  setDoc, deleteDoc
 } from 'firebase/firestore';
 import { Company, Trip, Route, Bus, Booking, TripTemplate } from '../types';
 
@@ -82,19 +82,6 @@ export async function cancelTrip(tripId: string, reason?: string): Promise<void>
   const payload: Record<string, unknown> = { status: 'cancelled', cancelledAt: serverTimestamp() };
   if (reason && reason.trim()) payload.cancelReason = reason.trim();
   await updateDoc(doc(db, 'trips', tripId), payload);
-}
-
-export async function decrementTripSeat(tripId: string, seatNumber: number): Promise<void> {
-  const ref = doc(db, 'trips', tripId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error('Trip not found');
-  const trip = snap.data() as Trip;
-  const newBooked = [...(trip.bookedSeats || []), seatNumber];
-  const newAvailable = trip.onlineSeats - newBooked.length;
-  await updateDoc(ref, {
-    bookedSeats: newBooked,
-    availableSeats: newAvailable
-  });
 }
 
 // ─── Bookings ────────────────────────────────────────────────

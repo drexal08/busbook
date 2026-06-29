@@ -371,7 +371,12 @@ service cloud.firestore {
     }
 
     match /trips/{tripId} {
-      allow read: if true;
+      allow read: if isAdmin() ||
+        (signedIn() && resource.data.companyId == currentUserData().companyId) ||
+        (signedIn() && resource.data.status == 'scheduled');
+      allow list: if isAdmin() ||
+        (signedIn() && request.query.where('companyId', '==', currentUserData().companyId)) ||
+        (signedIn() && request.query.where('status', '==', 'scheduled'));
       allow create: if signedIn() &&
         validTrip(request.resource.data) &&
         canManageCompanyResources(request.resource.data.companyId);
@@ -398,16 +403,7 @@ service cloud.firestore {
     match /bookings/{bookingId} {
       allow get: if canReadBooking(resource.data);
       allow list: if signedIn() && canReadBooking(resource.data);
-      allow create: if signedIn() &&
-        validBooking(request.resource.data) &&
-        request.resource.data.passengerId == request.auth.uid;
-      allow update: if isAdmin() ||
-        (signedIn() &&
-          validBooking(request.resource.data) &&
-          onlyChanged(['status']) &&
-          resource.data.status == 'confirmed' &&
-          ((request.resource.data.status == 'cancelled' && request.auth.uid == resource.data.passengerId) ||
-            (request.resource.data.status == 'used' && isCompanyStaff(resource.data.companyId))));
+      allow create, update: if false;
       allow delete: if isAdmin();
     }
 

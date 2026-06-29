@@ -64,8 +64,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { profile } = await fbLogin(email, password);
       setUser(profile as User);
       return { success: true, profile: profile as User };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Invalid email or password' };
+    } catch (error) {
+      console.error('Login error:', error);
+      const message = error instanceof Error ? error.message : 'Invalid email or password';
+      return { success: false, error: message };
     }
   }, []);
 
@@ -90,8 +92,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       setUser(profile);
       return { success: true, userId: firebaseUser.uid, profile };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Signup failed' };
+    } catch (error) {
+      console.error('Signup error:', error);
+      const message = error instanceof Error ? error.message : 'Signup failed';
+      return { success: false, error: message };
     }
   }, []);
 
@@ -100,8 +104,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { profile } = await fbLoginWithGoogle();
       setUser(profile);
       return { success: true, profile };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Google login failed' };
+    } catch (error) {
+      console.error('Google login error:', error);
+      const message = error instanceof Error ? error.message : 'Google login failed';
+      return { success: false, error: message };
     }
   }, []);
 
@@ -110,14 +116,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { profile } = await fbLoginWithFacebook();
       setUser(profile);
       return { success: true, profile };
-    } catch (e: any) {
-      return { success: false, error: e.message || 'Facebook login failed' };
+    } catch (error) {
+      console.error('Facebook login error:', error);
+      const message = error instanceof Error ? error.message : 'Facebook login failed';
+      return { success: false, error: message };
     }
   }, []);
 
   const logout = useCallback(async () => {
-    await fbLogout();
-    setUser(null);
+    try {
+      await fbLogout();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      setUser(null);
+    }
   }, []);
 
   const updateUserCompanyId = useCallback(async (userId: string, companyId: string) => {

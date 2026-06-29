@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { IconMail, IconLock, IconGoogle, IconFacebook } from '../components/Icons';
 import { LogoMark } from '../components/Logo';
+import { SocialLoginButton } from '../components/SocialLoginButton';
 import { getPostAuthPath } from '../lib/userRoutes';
 import { ERROR_MESSAGES, LOADING_MESSAGES } from '../lib/auth/constants';
 import { toAuthError } from '../lib/auth/errors';
@@ -14,23 +15,6 @@ const LoginPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
   const navigate = useNavigate();
-
-  const authActions = useMemo(() => ([
-    {
-      label: 'Continue with Google',
-      className: 'border border-border text-gray-700 hover:bg-surface-secondary',
-      action: async () => loginWithGoogle(),
-      icon: <IconGoogle size={18} />,
-
-    },
-    {
-      label: 'Continue with Facebook',
-      className: 'border border-border text-gray-700 hover:bg-surface-secondary',
-      action: async () => loginWithFacebook(),
-      icon: <IconFacebook size={18} />,
-
-    },
-  ]), [loginWithFacebook, loginWithGoogle]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,19 +105,16 @@ const LoginPage: React.FC = () => {
                 Or
               </span>
             </div>
-            {authActions.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => handleSocialLogin(item.action)}
-                className={`w-full font-semibold py-3 rounded-xl text-[13px] flex items-center justify-center gap-2 transition-all ${item.className}`}
-              >
-                {item.icon && <span className="inline-flex">{item.icon}</span>}
-
-
-                {item.label}
-              </button>
-            ))}
+            <SocialLoginButton
+              label="Continue with Google"
+              icon={<IconGoogle size={18} />}
+              onClick={() => handleSocialLogin(() => loginWithGoogle())}
+            />
+            <SocialLoginButton
+              label="Continue with Facebook"
+              icon={<IconFacebook size={18} />}
+              onClick={() => handleSocialLogin(() => loginWithFacebook())}
+            />
           </form>
 
           <div className="mt-5 text-center">
