@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { cities } from '../data/mockData';
@@ -13,7 +13,6 @@ import { IconCheck, IconX } from '../components/Icons';
 import { TripTemplate, User } from '../types';
 
 const CompanyDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const {
     companies,
@@ -274,7 +273,9 @@ const CompanyDashboard: React.FC = () => {
     setTab('schedules');
   };
 
-  if (!isAuthenticated || !user || user.role !== 'company') { navigate('/login'); return null; }
+  if (!isAuthenticated || !user || user.role !== 'company') {
+    return <Navigate to="/login" replace />;
+  }
 
   const tabs = [
   { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },

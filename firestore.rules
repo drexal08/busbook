@@ -112,7 +112,7 @@ service cloud.firestore {
     function queryOwnBookings() {
       return signedIn() && (
         request.query.where('passengerId', '==', request.auth.uid) ||
-        (hasCompany(currentUserData().companyId) &&
+        (isCompanyStaff(currentUserData().companyId) &&
           request.query.where('companyId', '==', currentUserData().companyId))
       );
     }
@@ -120,7 +120,7 @@ service cloud.firestore {
     function queryOwnPayments() {
       return signedIn() && (
         request.query.where('passengerId', '==', request.auth.uid) ||
-        (hasCompany(currentUserData().companyId) &&
+        (isCompanyStaff(currentUserData().companyId) &&
           request.query.where('companyId', '==', currentUserData().companyId))
       );
     }
@@ -288,7 +288,7 @@ service cloud.firestore {
     function canReadBooking(data) {
       return isAdmin() ||
         (signedIn() && data.passengerId == request.auth.uid) ||
-        (signedIn() && hasCompany(data.companyId));
+        (signedIn() && isCompanyStaff(data.companyId));
     }
 
     function canReadCompanyUsers(data) {
@@ -407,14 +407,14 @@ service cloud.firestore {
           onlyChanged(['status']) &&
           resource.data.status == 'confirmed' &&
           ((request.resource.data.status == 'cancelled' && request.auth.uid == resource.data.passengerId) ||
-            (request.resource.data.status == 'used' && hasCompany(resource.data.companyId))));
+            (request.resource.data.status == 'used' && isCompanyStaff(resource.data.companyId))));
       allow delete: if isAdmin();
     }
 
     match /payments/{paymentRef} {
       allow get: if isAdmin() ||
         (signedIn() && resource.data.passengerId == request.auth.uid) ||
-        (signedIn() && hasCompany(resource.data.companyId));
+        (signedIn() && isCompanyStaff(resource.data.companyId));
       allow list: if isAdmin() || queryOwnPayments();
       allow create, update, delete: if false;
     }

@@ -31,9 +31,10 @@ const requiredEnvVars = {
   'MAX_OTP_ATTEMPTS': { required: false, default: '3', description: 'Max verification attempts' },
   
   // Payment Configuration
-  'PAYMENT_TEST_MODE': { required: false, default: 'true', description: 'Payment test mode (true/false)' },
+  'PAYMENT_TEST_MODE': { required: false, default: 'false', description: 'Payment test mode (true/false)' },
   'PAYPACK_CLIENT_ID': { required: false, description: 'PayPack Client ID' },
   'PAYPACK_CLIENT_SECRET': { required: false, description: 'PayPack Client Secret' },
+  'PAYPACK_WEBHOOK_SECRET': { required: false, description: 'PayPack webhook signature secret' },
 };
 
 function stripWrappingQuotes(value: string): string {
@@ -83,6 +84,11 @@ function isOtpDevMode(): boolean {
   return value === 'true' || value === '1' || value === 'yes';
 }
 
+function isPaymentTestMode(): boolean {
+  const value = stripWrappingQuotes(process.env.PAYMENT_TEST_MODE || '').toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
 function main() {
   console.log('🔍 Validating environment variables...\n');
 
@@ -92,6 +98,15 @@ function main() {
     for (const smtpVar of ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_EMAIL']) {
       (requiredEnvVars as Record<string, any>)[smtpVar].required = true;
     }
+  }
+
+  if (!isPaymentTestMode()) {
+    for (const paymentVar of ['PAYPACK_CLIENT_ID', 'PAYPACK_CLIENT_SECRET', 'PAYPACK_WEBHOOK_SECRET']) {
+      (requiredEnvVars as Record<string, any>)[paymentVar].required = true;
+    }
+    console.log('ℹ️  PAYMENT_TEST_MODE is disabled — live payment credentials are required\n');
+  } else {
+    console.log('ℹ️  PAYMENT_TEST_MODE is enabled — using test payment configuration\n');
   }
   
   let hasErrors = false;
