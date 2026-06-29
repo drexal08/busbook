@@ -243,6 +243,27 @@ const SettingsPage: React.FC = () => {
     );
   }
 
+  const authProviderLabel =
+    user.authProvider === 'google'
+      ? 'Google'
+      : user.authProvider === 'facebook'
+      ? 'Facebook'
+      : 'Email & Password';
+  const joinedDate = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'Unknown';
+  const verificationStatus = needsAccountVerification(user) ? 'Pending' : 'Complete';
+  const accountOverview = [
+    ['Role', user.role.charAt(0).toUpperCase() + user.role.slice(1)],
+    ['Sign-in', authProviderLabel],
+    ['Member since', joinedDate],
+    ['Verification', verificationStatus],
+  ];
+
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
@@ -286,6 +307,29 @@ const SettingsPage: React.FC = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
+          <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4 md:col-span-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-secondary text-gray-500">
+                <IconSettings size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Account overview</h2>
+                <p className="text-[12px] text-gray-400">
+                  Quick details about this profile and how it is currently secured
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {accountOverview.map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-border-light bg-surface-secondary px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400">{label}</p>
+                  <p className="mt-1 text-[13px] font-semibold text-gray-900">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-50 text-primary-600">
