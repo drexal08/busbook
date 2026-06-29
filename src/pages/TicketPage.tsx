@@ -6,23 +6,70 @@ import { doc, getDoc } from 'firebase/firestore';
 import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconXCircle, IconTicket } from '../components/Icons';
 import { LogoFull } from '../components/Logo';
 import { ImigongoCorner, ImigongoDivider } from '../components/Imigongo';
+import { useAuth } from '../contexts/AuthContext';
 
 const TicketPage: React.FC = () => {
   const { bookingId } = useParams<{ bookingId: string }>();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!bookingId) return;
-    getDoc(doc(db, 'bookings', bookingId))
-      .then(snap => {
-        if (snap.exists()) setBooking({ id: snap.id, ...snap.data() });
-      })
-      .finally(() => setLoading(false));
-  }, [bookingId]);
+    if (authLoading) return;
 
-  if (loading) return (
+    if (!bookingId || !user) {
+      setBooking(null);
+      setErrorMessage('Please sign in to view your ticket.');
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadBooking = async () => {
+      setLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const snap = await getDoc(doc(db, 'bookings', bookingId));
+        if (cancelled) return;
+
+        if (!snap.exists()) {
+          setBooking(null);
+          setErrorMessage('Ticket not found.');
+          return;
+        }
+
+        const nextBooking = { id: snap.id, ...snap.data() } as Record<string, any>;
+        if (nextBooking.passengerId !== user.id) {
+          setBooking(null);
+          setErrorMessage('You can only view tickets for your own account.');
+          return;
+        }
+
+        setBooking(nextBooking);
+      } catch {
+        if (!cancelled) {
+          setBooking(null);
+          setErrorMessage('Unable to load this ticket right now.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadBooking();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, bookingId, user]);
+
+  if (authLoading || loading) return (
     <div className="min-h-[calc(100vh-60px)] flex items-center justify-center">
       <div className="w-8 h-8 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
     </div>
@@ -32,7 +79,7 @@ const TicketPage: React.FC = () => {
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
       <div className="text-center">
         <div className="w-14 h-14 bg-surface-tertiary rounded-2xl flex items-center justify-center mx-auto mb-3"><IconTicket size={24} className="text-gray-300" /></div>
-        <h3 className="font-bold text-gray-700 text-sm mb-1">Ticket not found</h3>
+        <h3 className="font-bold text-gray-700 text-sm mb-1">{errorMessage || 'Ticket not found'}</h3>
         <button onClick={() => navigate('/dashboard')} className="text-xs text-primary-700 font-bold hover:underline mt-2">My bookings</button>
       </div>
     </div>

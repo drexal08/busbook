@@ -1,29 +1,61 @@
 import { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { Navigate } from 'react-router-dom';
 import { validateBooking } from '../lib/bookings';
 import { IconCamera, IconScan, IconShieldSuccess, IconShieldError, IconCalendar, IconInfo } from '../components/Icons';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ScanPage() {
+  const { user } = useAuth();
   const [bookingId, setBookingId] = useState('');
   const [result, setResult] = useState<{ valid: boolean; message?: string; booking?: any } | null>(null);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
+  async function stopScanner() {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+
+    if (!scanner) {
+      setScanning(false);
+      return;
+    }
+
+    try {
+      await scanner.stop();
+    } catch {}
+
+    try {
+      await scanner.clear();
+    } catch {}
+
+    setScanning(false);
+  }
+
   async function startScanner() {
+    if (scanning) return;
+
+    await stopScanner();
     const scanner = new Html5Qrcode('qr-reader');
     scannerRef.current = scanner;
-    setScanning(true);
-    await scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: 250 },
-      async (decodedText) => {
-        await scanner.stop();
-        setScanning(false);
-        await extractAndValidateId(decodedText);
-      },
-      () => {}
-    );
+
+    try {
+      setResult(null);
+      setScanning(true);
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        async (decodedText) => {
+          await stopScanner();
+          await extractAndValidateId(decodedText);
+        },
+        () => {}
+      );
+    } catch {
+      await stopScanner();
+      setResult({ valid: false, message: 'Camera access was denied or no supported camera was found.' });
+    }
   }
 
   async function extractAndValidateId(scannedText: string) {
@@ -61,9 +93,13 @@ export default function ScanPage() {
 
   useEffect(() => {
     return () => {
-      scannerRef.current?.stop().catch(() => {});
+      void stopScanner();
     };
   }, []);
+
+  if (user?.role === 'operator' && user.operatorStatus !== 'approved') {
+    return <Navigate to="/operator" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-surface-secondary flex items-center justify-center p-4">
@@ -82,7 +118,7 @@ export default function ScanPage() {
         <div id="qr-reader" className={scanning ? 'mb-4 rounded-xl overflow-hidden border-2 border-primary-500' : 'hidden'} />
 
         {scanning && (
-          <button onClick={() => { scannerRef.current?.stop(); setScanning(false); }}
+          <button onClick={() => { void stopScanner(); }}
             className="w-full bg-surface-tertiary hover:bg-surface-secondary text-gray-700 py-2 rounded-xl text-sm mb-4 transition">
             Cancel
           </button>

@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { IconShield, IconChart, IconBuilding, IconCalendar, IconTicket, IconCheck, IconX, IconArrowRight, IconBus, IconSeat, IconWallet, IconCheckCircle, IconXCircle, IconClock } from '../components/Icons';
 
 const AdminDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { companies, approveCompany, rejectCompany, trips, bookings, routes } = useData();
   const [tab, setTab] = useState<string>('overview');
 
-  if (!isAuthenticated || !user || user.role !== 'admin') { navigate('/login'); return null; }
+  if (!isAuthenticated || !user || user.role !== 'admin') {
+    return <Navigate to="/login" replace />;
+  }
 
   const pending = companies.filter(c => c.status === 'pending');
   const approved = companies.filter(c => c.status === 'approved');

@@ -1,12 +1,12 @@
-import { useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { IconScan, IconBus, IconUsers, IconCheckCircle, IconXCircle, IconClock, IconSeat, IconArrowRight, IconTicket } from '../components/Icons';
 import Select from '../components/Select';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const OperatorDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { validateTicket, getCompanyTrips, bookings, getRouteInfo } = useData();
   const [qr, setQr] = useState('');
@@ -14,11 +14,11 @@ const OperatorDashboard: React.FC = () => {
   const [scanning, setScanning] = useState(false);
   const [selTrip, setSelTrip] = useState<string | null>(null);
   const [tab, setTab] = useState<'scan' | 'trips' | 'passengers'>('scan');
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   
   // 1. FIRST: Authenticate and confirm role boundaries
   if (!isAuthenticated || !user || user.role !== 'operator') { 
-    navigate('/login'); 
-    return null; 
+    return <Navigate to="/login" replace />;
   }
 
   // 2. SECOND: Check safe operator state variables now that user object is fully loaded
@@ -42,6 +42,44 @@ const OperatorDashboard: React.FC = () => {
   const todayTrips = cTrips.filter(t => t.date === today);
   const tripPassengers = (id: string) => bookings.filter(b => b.tripId === id && b.status !== 'cancelled');
 
+  const stopScanner = async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+
+    if (!scanner) {
+      setScanning(false);
+      return;
+    }
+
+    try {
+      await scanner.stop();
+    } catch {}
+
+    try {
+      await scanner.clear();
+    } catch {}
+
+    setScanning(false);
+  };
+
+  const extractBookingId = (rawValue: string) => {
+    let extractedId = rawValue.trim();
+
+    if (extractedId.startsWith('{') && extractedId.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(extractedId);
+        if (parsed.id) extractedId = parsed.id;
+      } catch {}
+    } else {
+      const idMatch =
+        extractedId.match(/(?:id|bookingId)["']?:\s*["']?([a-zA-Z0-9-]+)/i) ||
+        extractedId.match(/id=([a-zA-Z0-9-]+)/i);
+      if (idMatch && idMatch[1]) extractedId = idMatch[1];
+    }
+
+    return extractedId;
+  };
+
  const handleScan = async (bookingId?: string) => {
   const targetId = bookingId || qr.trim();
   if (!targetId) return;
@@ -63,6 +101,12 @@ const OperatorDashboard: React.FC = () => {
     setScanning(false);
   }
 };
+
+  useEffect(() => {
+    return () => {
+      void stopScanner();
+    };
+  }, []);
 
   const selTripData = selTrip ? cTrips.find(t => t.id === selTrip) : null;
   const selPassengers = selTrip ? tripPassengers(selTrip) : [];
@@ -102,32 +146,27 @@ const OperatorDashboard: React.FC = () => {
       {!scanning && (
         <button 
           onClick={async () => {
-            setScanning(true);
-            const Html5Qrcode = (await import('html5-qrcode')).Html5Qrcode;
+            if (scanning) return;
+
+            await stopScanner();
             const scanner = new Html5Qrcode('qr-reader-operator');
+            scannerRef.current = scanner;
             try {
+              setResult(null);
+              setScanning(true);
               await scanner.start(
                 { facingMode: 'environment' },
                 { fps: 10, qrbox: 250 },
                 async (decodedText) => {
-                  await scanner.stop();
-                  setScanning(false);
-                  // Extract booking ID from various QR formats
-                  let extractedId = decodedText.trim();
-                  if (extractedId.startsWith('{') && extractedId.endsWith('}')) {
-                    try {
-                      const parsed = JSON.parse(extractedId);
-                      if (parsed.id) extractedId = parsed.id;
-                    } catch (e) {}
-                  }
+                  await stopScanner();
+                  const extractedId = extractBookingId(decodedText);
                   setQr(extractedId);
-                  handleScan(extractedId);
+                  void handleScan(extractedId);
                 },
                 () => {}
               );
-            } catch (err) {
-              console.error('Camera error:', err);
-              setScanning(false);
+            } catch {
+              await stopScanner();
               setResult({ valid: false, message: 'Camera access denied or unavailable' });
             }
           }}
@@ -143,8 +182,7 @@ const OperatorDashboard: React.FC = () => {
       {scanning && (
         <button 
           onClick={() => {
-            setScanning(false);
-            // Stop scanner cleanup handled by component
+            void stopScanner();
           }}
           className="w-full bg-surface-tertiary hover:bg-surface-secondary text-gray-700 py-2 rounded-xl text-xs mb-4 transition"
         >
