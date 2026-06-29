@@ -6,7 +6,7 @@ import { initiateCashin, listenToPayment } from '../lib/payments';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Trip } from '../types';
-import { IconAirtel, IconArrowLeft, IconArrowRight, IconCheckCircle, IconMtn, IconSeat, IconClock, IconCalendar, IconBus, IconLock, IconLogin } from '../components/Icons';
+import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconSeat, IconClock, IconCalendar, IconBus, IconLock, IconLogin } from '../components/Icons';
 
 const PAYMENT_METHOD_CONFIG = {
   mtn_momo: {
@@ -29,22 +29,22 @@ const PAYMENT_OPTIONS: Array<{
   key: PaymentMethod;
   name: string;
   sub: string;
-  accent: string;
-  icon: React.ReactNode;
+  badge: string;
+  badgeClassName: string;
 }> = [
   {
     key: 'mtn_momo',
     name: 'MTN MoMo',
     sub: 'Pay with MTN Mobile Money',
-    accent: 'bg-[#FFF7CC] text-[#7A5A00]',
-    icon: <IconMtn size={28} />,
+    badge: 'MTN',
+    badgeClassName: 'bg-[#FFF7CC] text-[#7A5A00]',
   },
   {
     key: 'airtel_money',
     name: 'Airtel Money',
     sub: 'Pay with Airtel Money',
-    accent: 'bg-[#FDE3E1] text-[#B21F16]',
-    icon: <IconAirtel size={28} />,
+    badge: 'Airtel',
+    badgeClassName: 'bg-[#FDE3E1] text-[#B21F16]',
   },
 ];
 
@@ -502,8 +502,8 @@ const layoutRows = useMemo(() => {
                       className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${
                         paymentMethod === m.key ? 'border-primary-400 bg-primary-50' : 'border-border-light hover:border-gray-300'
                       }`}>
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border border-border-light ${m.accent}`}>
-                        {m.icon}
+                      <div className={`min-w-[56px] h-10 rounded-xl flex items-center justify-center border border-border-light px-2 ${m.badgeClassName}`}>
+                        <span className="text-[11px] font-bold tracking-wide uppercase">{m.badge}</span>
                       </div>
                       <div><div className="text-xs font-semibold text-gray-800">{m.name}</div><div className="text-[10px] text-gray-400">{m.sub}</div></div>
                     </button>
