@@ -29,8 +29,8 @@ const PAYMENT_OPTIONS: Array<{
   key: PaymentMethod;
   name: string;
   sub: string;
-  accent: string;
-  icon: React.ReactNode;
+  badge: string;
+  badgeClassName: string;
 }> = [
   {
     key: 'mtn_momo',
