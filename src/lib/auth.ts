@@ -201,6 +201,35 @@ export async function refreshCurrentUserProfile() {
   return loadProfile(auth.currentUser);
 }
 
+export async function updateCurrentUserName(name: string) {
+  const trimmedName = name.trim();
+
+  if (!auth.currentUser) {
+    throw new Error('Please log in to update your profile');
+  }
+
+  if (!trimmedName) {
+    throw new Error('Username is required');
+  }
+
+  await updateProfile(auth.currentUser, { displayName: trimmedName });
+  await updateDoc(doc(db, 'users', auth.currentUser.uid), { name: trimmedName });
+
+  return refreshCurrentUserProfile();
+}
+
+export async function deleteCurrentUserAccount() {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error('Please log in to delete your account');
+  }
+
+  const userId = currentUser.uid;
+  await deleteUser(currentUser);
+  await deleteDoc(doc(db, 'users', userId)).catch(() => {});
+}
+
 export async function updateUserVerificationFlags(
   userId: string,
   flags: Partial<Pick<User, 'emailOtpVerified' | 'phoneVerified' | 'emailVerified' | 'phone'>>
