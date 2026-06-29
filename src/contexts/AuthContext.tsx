@@ -49,7 +49,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           setUser(null);
         }
-      } catch {
+      } catch (error) {
+        console.error('Auth state change error:', error);
         setUser(null);
       } finally {
         setLoading(false);
