@@ -40,6 +40,12 @@ const DatePicker: React.FC<DatePickerProps> = ({
   const minDate = min ? new Date(min + 'T00:00:00') : null;
 
   useEffect(() => {
+    if (!selectedDate) return;
+    setViewYear(selectedDate.getFullYear());
+    setViewMonth(selectedDate.getMonth());
+  }, [selectedDate]);
+
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
@@ -161,13 +167,20 @@ const DatePicker: React.FC<DatePickerProps> = ({
 
       {/* Calendar Dropdown */}
       {open && (
-        <div className="absolute z-50 mt-1.5 w-[300px] bg-white border border-border rounded-xl shadow-lg shadow-black/8 p-4 animate-[fadeIn_0.15s_ease]">
+        <>
+          <button
+            type="button"
+            aria-label="Close calendar"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 bg-black/20 sm:hidden"
+          />
+          <div className="fixed inset-x-2 top-1/2 z-50 max-h-[min(80vh,32rem)] -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-white p-3 shadow-lg shadow-black/8 animate-[fadeIn_0.15s_ease] sm:absolute sm:left-0 sm:inset-x-auto sm:top-auto sm:z-50 sm:mt-1.5 sm:max-h-none sm:w-[300px] sm:max-w-none sm:translate-y-0 sm:overflow-visible sm:rounded-xl sm:p-4">
           {/* Header */}
-          <div className="flex items-center justify-between mb-3">
+          <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
               onClick={prevMonth}
-              className="w-7 h-7 rounded-lg hover:bg-surface-secondary flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-surface-secondary hover:text-gray-600"
             >
               <IconArrowLeft size={14} />
             </button>
@@ -177,7 +190,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
             <button
               type="button"
               onClick={nextMonth}
-              className="w-7 h-7 rounded-lg hover:bg-surface-secondary flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-surface-secondary hover:text-gray-600"
             >
               <IconArrowRight size={14} />
             </button>
@@ -204,7 +217,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
                 disabled={day.isDisabled || !day.inMonth}
                 onClick={() => day.inMonth && !day.isDisabled && selectDate(day.date)}
                 className={`
-                  relative w-full aspect-square flex items-center justify-center text-[12px] rounded-lg transition-all
+                  relative flex aspect-square min-h-9 w-full items-center justify-center rounded-lg text-[12px] transition-all
                   ${!day.inMonth
                     ? 'text-gray-200 cursor-default'
                     : day.isDisabled
@@ -235,7 +248,8 @@ const DatePicker: React.FC<DatePickerProps> = ({
               Today
             </button>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

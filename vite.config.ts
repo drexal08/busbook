@@ -26,4 +26,41 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return;
+          }
+
+          if (id.includes("firebase")) {
+            return "firebase";
+          }
+
+          if (id.includes("react-router")) {
+            return "router";
+          }
+
+          if (id.includes("react-iconly")) {
+            return "icons";
+          }
+
+          if (
+            id.includes("react") ||
+            id.includes("scheduler")
+          ) {
+            return "react-vendor";
+          }
+
+          if (
+            id.includes("qrcode.react") ||
+            id.includes("html5-qrcode")
+          ) {
+            return "qr-tools";
+          }
+        },
+      },
+    },
+  },
 });

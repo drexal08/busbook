@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid, IconSettings, IconStatus } from './Icons';
+import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid, IconSettings } from './Icons';
 import { LogoFull } from './Logo';
 import { getDashboardPath, needsAccountVerification } from '../lib/userRoutes';
 
@@ -64,7 +64,6 @@ const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center gap-1">
             {navLink('/', 'Home', <IconHome size={18} />)}
             {navLink('/search', 'Search', <IconSearch size={18} />)}
-            {navLink('/status', 'Status', <IconStatus size={18} />)}
             {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
           </div>
 
@@ -144,7 +143,6 @@ const Navbar: React.FC = () => {
           <div className="px-4 py-3 space-y-1">
             {navLink('/', 'Home', <IconHome size={18} />)}
             {navLink('/search', 'Search Routes', <IconSearch size={18} />)}
-            {navLink('/status', 'System Status', <IconStatus size={18} />)}
             {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
             <hr className="my-2 border-border" />
             {isAuthenticated ? (
