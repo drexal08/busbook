@@ -36,15 +36,15 @@ const PAYMENT_OPTIONS: Array<{
     key: 'mtn_momo',
     name: 'MTN MoMo',
     sub: 'Pay with MTN Mobile Money',
-    badge: 'MTN',
-    badgeClassName: 'bg-[#FFF7CC] text-[#7A5A00]',
+    accent: 'bg-[#FFF7CC] text-[#7A5A00]',
+    icon: <img src="/logos/mtn.png" alt="MTN MoMo" className="h-7 w-7 object-contain" loading="lazy" decoding="async" />,
   },
   {
     key: 'airtel_money',
     name: 'Airtel Money',
     sub: 'Pay with Airtel Money',
-    badge: 'Airtel',
-    badgeClassName: 'bg-[#FDE3E1] text-[#B21F16]',
+    accent: 'bg-[#FDE3E1] text-[#B21F16]',
+    icon: <img src="/logos/airtel.png" alt="Airtel Money" className="h-7 w-7 object-contain" loading="lazy" decoding="async" />,
   },
 ];
 
@@ -502,8 +502,8 @@ const layoutRows = useMemo(() => {
                       className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition-all ${
                         paymentMethod === m.key ? 'border-primary-400 bg-primary-50' : 'border-border-light hover:border-gray-300'
                       }`}>
-                      <div className={`min-w-[56px] h-10 rounded-xl flex items-center justify-center border border-border-light px-2 ${m.badgeClassName}`}>
-                        <span className="text-[11px] font-bold tracking-wide uppercase">{m.badge}</span>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center border border-border-light overflow-hidden ${m.accent}`}>
+                        {m.icon}
                       </div>
                       <div><div className="text-xs font-semibold text-gray-800">{m.name}</div><div className="text-[10px] text-gray-400">{m.sub}</div></div>
                     </button>

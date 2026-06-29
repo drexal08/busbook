@@ -143,8 +143,8 @@ const StatusPage: React.FC = () => {
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary">
       <div className="bg-white border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 sm:gap-4">
             <div className="w-10 h-10 bg-primary-100 rounded-2xl flex items-center justify-center text-primary-600">
               <IconShield size={20} />
             </div>
@@ -153,7 +153,7 @@ const StatusPage: React.FC = () => {
               <p className="text-xs text-gray-400">Real-time health monitoring dashboard</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
               onClick={fetchHealthStatus}
               disabled={loading}

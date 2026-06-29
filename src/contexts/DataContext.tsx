@@ -104,29 +104,89 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initial load
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       setLoading(true);
-      try {
-        const [c, r, b, t, tt] = await Promise.all([
-          fetchCompanies(),
-          fetchRoutes(),
-          fetchBuses(),
-          fetchTrips(),
-          fbFetchTripTemplates()
-        ]);
-        setCompanies(c);
-        setRoutes(r);
-        setBuses(b);
-        setTrips(t);
-        setTripTemplates(tt);
-      } catch (e) {
-        console.error('DataContext load error:', e);
-      } finally {
+      const [companiesResult, routesResult, busesResult, tripsResult] = await Promise.allSettled([
+        fetchCompanies(),
+        fetchRoutes(),
+        fetchBuses(),
+        fetchTrips(),
+      ]);
+
+      if (!active) {
+        return;
+      }
+
+      if (companiesResult.status === 'fulfilled') {
+        setCompanies(companiesResult.value);
+      } else {
+        console.error('Failed to load companies:', companiesResult.reason);
+      }
+
+      if (routesResult.status === 'fulfilled') {
+        setRoutes(routesResult.value);
+      } else {
+        console.error('Failed to load routes:', routesResult.reason);
+      }
+
+      if (busesResult.status === 'fulfilled') {
+        setBuses(busesResult.value);
+      } else {
+        console.error('Failed to load buses:', busesResult.reason);
+      }
+
+      if (tripsResult.status === 'fulfilled') {
+        setTrips(tripsResult.value);
+      } else {
+        console.error('Failed to load trips:', tripsResult.reason);
+      }
+
+      if (active) {
         setLoading(false);
       }
     };
-    load();
+
+    load().catch((e) => {
+      if (active) {
+        console.error('DataContext load error:', e);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (user?.role !== 'company' || !user.companyId) {
+      setTripTemplates([]);
+      return;
+    }
+
+    let active = true;
+
+    const loadTripTemplates = async () => {
+      try {
+        const templates = await fbFetchTripTemplates(user.companyId);
+        if (active) {
+          setTripTemplates(templates);
+        }
+      } catch (e) {
+        console.error('Failed to load trip templates:', e);
+      }
+    };
+
+    loadTripTemplates();
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user?.companyId, user?.role]);
 
   const refreshCompanyData = useCallback(async (companyId: string) => {
     const [r, b, t, bk, tt] = await Promise.all([

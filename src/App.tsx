@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import Navbar from './components/Navbar';
+import SystemStatusNotice from './components/SystemStatusNotice';
 import { IconHome } from './components/Icons';
 import { isFirebaseConfigured } from './lib/firebase';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -21,6 +22,33 @@ const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const StatusPage = React.lazy(() => import('./pages/StatusPage'));
 const ScanPage = React.lazy(() => import('./pages/ScanPage'));
+
+const RouteLoadingFallback: React.FC = () => (
+  <div className="min-h-[calc(100vh-60px)] bg-surface-secondary">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="animate-pulse space-y-4">
+        <div className="h-10 w-44 rounded-2xl bg-white border border-border" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-white p-5 lg:col-span-2">
+            <div className="space-y-3">
+              <div className="h-4 w-32 rounded bg-surface-tertiary" />
+              <div className="h-8 w-full rounded-xl bg-surface-tertiary" />
+              <div className="h-40 w-full rounded-2xl bg-surface-secondary" />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border bg-white p-5">
+            <div className="space-y-3">
+              <div className="h-4 w-28 rounded bg-surface-tertiary" />
+              <div className="h-12 w-full rounded-xl bg-surface-secondary" />
+              <div className="h-12 w-full rounded-xl bg-surface-secondary" />
+              <div className="h-12 w-full rounded-xl bg-surface-secondary" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 const App: React.FC = () => {
   if (!isFirebaseConfigured) {
@@ -42,12 +70,9 @@ const App: React.FC = () => {
         <BrowserRouter>
           <div className="min-h-screen bg-surface-secondary">
             <Navbar />
+            <SystemStatusNotice />
             <React.Suspense
-              fallback={
-                <div className="min-h-[calc(100vh-60px)] bg-surface-secondary flex items-center justify-center">
-                  <div className="w-8 h-8 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
-                </div>
-              }
+              fallback={<RouteLoadingFallback />}
             >
               <Routes>
                 <Route path="/" element={<HomePage />} />
