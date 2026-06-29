@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid, IconInfo, IconStatus } from './Icons';
+import { IconSearch, IconHome, IconLogout, IconMenu, IconX, IconShield, IconBuilding, IconScan, IconGrid, IconSettings, IconStatus } from './Icons';
 import { LogoFull } from './Logo';
 import { getDashboardPath, needsAccountVerification } from '../lib/userRoutes';
 
@@ -66,7 +66,6 @@ const Navbar: React.FC = () => {
             {navLink('/search', 'Search', <IconSearch size={18} />)}
             {navLink('/status', 'Status', <IconStatus size={18} />)}
             {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
-            {isAuthenticated && navLink('/settings', 'Settings', <IconInfo size={18} />)}
           </div>
 
           {/* Desktop Right */}
@@ -92,6 +91,17 @@ const Navbar: React.FC = () => {
                     Verify account
                   </Link>
                 )}
+                <Link
+                  to="/settings"
+                  className={`p-2 rounded-lg transition-all ${
+                    isActive('/settings')
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-surface-secondary'
+                  }`}
+                  title="Settings"
+                >
+                  <IconSettings size={18} />
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-surface-secondary transition-all"
@@ -136,7 +146,6 @@ const Navbar: React.FC = () => {
             {navLink('/search', 'Search Routes', <IconSearch size={18} />)}
             {navLink('/status', 'System Status', <IconStatus size={18} />)}
             {isAuthenticated && navLink(getDashboardPath(user?.role), 'Dashboard', getDashboardIcon())}
-            {isAuthenticated && navLink('/settings', 'Settings', <IconInfo size={18} />)}
             <hr className="my-2 border-border" />
             {isAuthenticated ? (
               <>
@@ -149,6 +158,17 @@ const Navbar: React.FC = () => {
                     <div className="text-xs text-gray-400">{user?.email}</div>
                   </div>
                 </div>
+                <Link
+                  to="/settings"
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
+                    isActive('/settings')
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-gray-600 hover:bg-surface-secondary'
+                  }`}
+                >
+                  <IconSettings size={18} /> Settings
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-[13px] font-medium text-red-500 hover:bg-red-50 transition-all"

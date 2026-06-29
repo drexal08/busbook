@@ -3,8 +3,10 @@ import type { ConfirmationResult } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  deleteCurrentUserAccount,
   refreshCurrentUserProfile,
   resendVerificationEmail,
+  updateCurrentUserName,
   updateUserVerificationFlags,
 } from '../lib/auth';
 import {
@@ -17,9 +19,12 @@ import { getDashboardPath, needsAccountVerification } from '../lib/userRoutes';
 import {
   IconArrowRight,
   IconCheckCircle,
+  IconSettings,
   IconLock,
   IconMail,
   IconPhone,
+  IconUser,
+  IconXCircle,
 } from '../components/Icons';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../lib/auth/constants';
 import { toAuthError } from '../lib/auth/errors';
@@ -34,6 +39,8 @@ const SettingsPage: React.FC = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [name, setName] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   useEffect(() => {
     if (!loading && !user) {
@@ -43,7 +50,8 @@ const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     setPhone(user?.phone || '');
-  }, [user?.phone]);
+    setName(user?.name || '');
+  }, [user?.name, user?.phone]);
 
   const setFeedback = (nextSuccess = '', nextError = '') => {
     setSuccess(nextSuccess);
@@ -66,6 +74,56 @@ const SettingsPage: React.FC = () => {
     } catch (e) {
       const error = toAuthError(e);
       setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleUpdateName = async () => {
+    if (!user) return;
+
+    if (!name.trim()) {
+      setFeedback('', 'Enter a username first');
+      return;
+    }
+
+    if (name.trim() === user.name.trim()) {
+      setFeedback('Your username is already up to date.');
+      return;
+    }
+
+    try {
+      setBusy('profile-name');
+      setFeedback();
+      await updateCurrentUserName(name);
+      await refreshUser();
+      setFeedback('Username updated successfully.');
+    } catch (e) {
+      const error = toAuthError(e);
+      setFeedback('', error.message || ERROR_MESSAGES.UNKNOWN_ERROR);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation.trim().toUpperCase() !== 'DELETE') {
+      setFeedback('', 'Type DELETE to confirm account deletion');
+      return;
+    }
+
+    try {
+      setBusy('delete-account');
+      setFeedback();
+      await deleteCurrentUserAccount();
+      navigate('/');
+    } catch (e) {
+      const error = toAuthError(e);
+      const message =
+        error.message.includes('recent') || error.message.includes('credential')
+          ? 'Please log in again before deleting your account.'
+          : error.message || ERROR_MESSAGES.UNKNOWN_ERROR;
+      setFeedback('', message);
     } finally {
       setBusy(null);
     }
@@ -230,6 +288,47 @@ const SettingsPage: React.FC = () => {
         <div className="grid gap-4 md:grid-cols-2">
           <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4">
             <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-50 text-primary-600">
+                <IconUser size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Profile details</h2>
+                <p className="text-[12px] text-gray-400">
+                  Change the username shown across your account and bookings
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                Username
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your username"
+                className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+              />
+            </div>
+
+            <div className="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-[12px] text-primary-700">
+              Your email stays the same. Only the display name changes.
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUpdateName}
+              disabled={busy === 'profile-name'}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 disabled:opacity-60"
+            >
+              <IconSettings size={16} />
+              {busy === 'profile-name' ? 'Saving...' : 'Save username'}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-border shadow-sm p-5 space-y-4">
+            <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.emailVerified ? 'bg-emerald-50 text-emerald-600' : 'bg-surface-secondary text-gray-400'}`}>
                 <IconMail size={18} />
               </div>
@@ -371,6 +470,42 @@ const SettingsPage: React.FC = () => {
                 <div id="settings-phone-recaptcha" />
               </>
             )}
+          </div>
+
+          <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5 space-y-4 md:col-span-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-50 text-red-500">
+                <IconXCircle size={18} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Danger zone</h2>
+                <p className="text-[12px] text-gray-400">
+                  Permanently delete this user account and remove access to your profile
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-[12px] text-red-600">
+              This action cannot be undone. Type DELETE below before continuing.
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                placeholder="Type DELETE to confirm"
+                className="w-full rounded-xl border border-red-100 bg-white px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-red-300 focus:ring-2 focus:ring-red-100"
+              />
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={busy === 'delete-account'}
+                className="rounded-xl bg-red-500 px-4 py-2.5 text-[12px] font-semibold text-white transition-all hover:bg-red-600 disabled:opacity-60"
+              >
+                {busy === 'delete-account' ? 'Deleting...' : 'Delete account'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
