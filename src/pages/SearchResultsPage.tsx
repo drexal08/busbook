@@ -116,15 +116,15 @@ const SearchResultsPage: React.FC = () => {
                         <div className="flex items-center gap-1 text-[11px] text-gray-400"><IconSeat size={12} /> {trip.availableSeats} left</div>
                       </div>
                     </div>
-                    <div className="mt-4 pt-3.5 border-t border-border-light flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                    <div className="mt-4 flex flex-col gap-3 border-t border-border-light pt-3.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <span className="flex items-center gap-1 text-[11px] text-gray-400"><IconCalendar size={12} /> {formatDate(trip.date)}</span>
                         {bus?.amenities?.map((a, i) => (
                           <span key={i} className="flex items-center gap-1 text-[10px] text-gray-400 bg-surface-secondary px-1.5 py-0.5 rounded">{amenityIcon(a)} {a}</span>
                         ))}
                       </div>
                       <button onClick={() => navigate(`/book/${trip.id}`)}
-                        className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-lg text-[12px] font-semibold transition-all hover:shadow-md hover:shadow-primary-100 active:scale-[0.98] flex items-center gap-1.5">
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-5 py-2 text-[12px] font-semibold text-white transition-all hover:bg-primary-700 hover:shadow-md hover:shadow-primary-100 active:scale-[0.98] sm:w-auto">
                         Select seat <IconArrowRight size={13} />
                       </button>
                     </div>

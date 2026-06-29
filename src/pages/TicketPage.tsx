@@ -146,7 +146,7 @@ const TicketPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               {[
                 { label: 'Date', value: new Date(booking.departureDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) },
                 { label: 'Departure', value: booking.departureTime },
