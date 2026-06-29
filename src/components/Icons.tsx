@@ -108,6 +108,70 @@ export const IconShieldSuccess: React.FC<IconProps> = (props) => renderIconly(Sh
 export const IconShieldError: React.FC<IconProps> = (props) => renderIconly(ShieldFail, props);
 export const IconStatus: React.FC<IconProps> = (props) => renderIconly(Activity, props);
 export const IconDatabase: React.FC<IconProps> = (props) => renderIconly(Category, props);
+export const IconSettings: React.FC<IconProps> = ({ size = 20, className = '' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    style={{ width: size, height: size }}
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M12 8.75a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M19.4 13.5a1.2 1.2 0 0 0 .24 1.32l.04.04a1.45 1.45 0 0 1 0 2.05l-.5.5a1.45 1.45 0 0 1-2.05 0l-.04-.04a1.2 1.2 0 0 0-1.32-.24 1.2 1.2 0 0 0-.73 1.1v.12A1.45 1.45 0 0 1 13.6 20h-.7a1.45 1.45 0 0 1-1.45-1.45v-.07a1.2 1.2 0 0 0-.79-1.14 1.2 1.2 0 0 0-1.26.27l-.04.04a1.45 1.45 0 0 1-2.05 0l-.5-.5a1.45 1.45 0 0 1 0-2.05l.04-.04a1.2 1.2 0 0 0 .24-1.32 1.2 1.2 0 0 0-1.1-.73h-.12A1.45 1.45 0 0 1 4.4 11.6v-.7a1.45 1.45 0 0 1 1.45-1.45h.07a1.2 1.2 0 0 0 1.14-.79 1.2 1.2 0 0 0-.27-1.26l-.04-.04a1.45 1.45 0 0 1 0-2.05l.5-.5a1.45 1.45 0 0 1 2.05 0l.04.04a1.2 1.2 0 0 0 1.32.24 1.2 1.2 0 0 0 .73-1.1v-.12A1.45 1.45 0 0 1 12.9 2.4h.7a1.45 1.45 0 0 1 1.45 1.45v.07a1.2 1.2 0 0 0 .79 1.14 1.2 1.2 0 0 0 1.26-.27l.04-.04a1.45 1.45 0 0 1 2.05 0l.5.5a1.45 1.45 0 0 1 0 2.05l-.04.04a1.2 1.2 0 0 0-.24 1.32 1.2 1.2 0 0 0 1.1.73h.12A1.45 1.45 0 0 1 20 10.9v.7a1.45 1.45 0 0 1-1.45 1.45h-.07a1.2 1.2 0 0 0-1.14.45Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const IconMtn: React.FC<IconProps> = ({ size = 20, className = '' }) => (
+  <svg
+    viewBox="0 0 48 48"
+    className={className}
+    style={{ width: size, height: size }}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect x="4" y="8" width="40" height="32" rx="16" fill="#FFCC00" />
+    <path
+      d="M10 24c0-7.2 6.3-13 14-13s14 5.8 14 13-6.3 13-14 13-14-5.8-14-13Z"
+      fill="none"
+      stroke="#111827"
+      strokeWidth="2.2"
+    />
+    <path
+      d="M17 28V20.5h1.9l2.2 3.7 2.2-3.7h1.8V28h-1.9v-4.1l-1.8 3h-.7l-1.8-3V28H17Zm10.2 0v-7.5H29l3.7 4.7v-4.7h2V28H33l-3.8-4.8V28h-2Z"
+      fill="#111827"
+    />
+  </svg>
+);
+
+export const IconAirtel: React.FC<IconProps> = ({ size = 20, className = '' }) => (
+  <svg
+    viewBox="0 0 48 48"
+    className={className}
+    style={{ width: size, height: size }}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect x="4" y="8" width="40" height="32" rx="16" fill="#EE3124" />
+    <path
+      d="M28.8 15.8c-4.1 0-7.4 2.7-7.4 6.2 0 2.2 1.3 4 3.2 5.1-.2-1.2.2-2.8 1.2-4.3 1.7-2.6 4.7-4 7.2-3.5-.7-2.1-2.4-3.5-4.2-3.5Z"
+      fill="#fff"
+    />
+    <path
+      d="M18 28.5c2.6-2 7.1-2.9 10.6-2 2.3.6 4 1.8 5 3.4-.9.9-2.2 1.5-3.8 1.8-2.5.5-5.8.1-8.6-1.1-1.5-.6-2.7-1.3-3.2-2.1Z"
+      fill="#fff"
+    />
+  </svg>
+);
 
 // Social login icons
 export const IconGoogle: React.FC<IconProps> = (props) => {
