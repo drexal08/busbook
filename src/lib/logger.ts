@@ -126,6 +126,10 @@ class Logger {
     this.info(`Verification event: ${event}`, { component: 'verification', action: event, ...context });
   }
 
+  logSystemEvent(event: string, context?: LogContext) {
+    this.info(`System event: ${event}`, { component: 'system', action: event, ...context });
+  }
+
   logApiCall(method: string, endpoint: string, context?: LogContext) {
     this.debug(`API call: ${method} ${endpoint}`, { component: 'api', method, endpoint, ...context });
   }

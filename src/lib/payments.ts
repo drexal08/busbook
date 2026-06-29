@@ -7,6 +7,7 @@ interface CashinInput {
   phone: string;
   tripId: string;
   seatNumber: number;
+  paymentMethod: 'mtn_momo' | 'airtel_money';
 }
 
 async function readResponseBody(res: Response): Promise<any> {
@@ -38,6 +39,7 @@ export async function initiateCashin(
         phone: data.phone,
         tripId: data.tripId,
         seatNumber: data.seatNumber,
+        paymentMethod: data.paymentMethod,
       }),
     });
 

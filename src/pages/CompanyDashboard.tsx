@@ -7,6 +7,7 @@ import { IconChart, IconRoute, IconBus, IconCalendar, IconTicket, IconPlus, Icon
 import Select from '../components/Select';
 import DatePicker from '../components/DatePicker';
 import { db } from '../lib/firebase';
+import { parsePositiveInteger, parseRwfAmount, sanitizeRwfAmountInput } from '../lib/numberInput';
 import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore'; 
 import { IconCheck, IconX } from '../components/Icons';
 import { TripTemplate, User } from '../types';
@@ -104,27 +105,104 @@ const CompanyDashboard: React.FC = () => {
     setCodeCopied(true);
     setTimeout(() => setCodeCopied(false), 2000);
   };
-  const handleAddRoute = (e: React.FormEvent) => { e.preventDefault(); addRoute({ companyId: cid, origin: nrOrigin, destination: nrDest, distance: parseInt(nrDist), duration: nrDur }); setNrOrigin(''); setNrDest(''); setNrDist(''); setNrDur(''); flash('Route added'); setTab('routes'); };
-  const handleAddBus = (e: React.FormEvent) => { e.preventDefault(); addBus({ companyId: cid, name: nbName, plateNumber: nbPlate, totalSeats: parseInt(nbSeats), layout: '2-2', amenities: ['AC'] }); setNbName(''); setNbPlate(''); setNbSeats('49'); flash('Bus added'); setTab('buses'); };
+  const handleAddRoute = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const distance = parsePositiveInteger(nrDist);
+    if (!distance) {
+      flash('Enter a valid route distance greater than zero');
+      return;
+    }
+
+    await addRoute({
+      companyId: cid,
+      origin: nrOrigin,
+      destination: nrDest,
+      distance,
+      duration: nrDur,
+    });
+    setNrOrigin('');
+    setNrDest('');
+    setNrDist('');
+    setNrDur('');
+    flash('Route added');
+    setTab('routes');
+  };
+
+  const handleAddBus = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const totalSeats = parsePositiveInteger(nbSeats);
+    if (!totalSeats) {
+      flash('Enter a valid seat capacity greater than zero');
+      return;
+    }
+
+    await addBus({
+      companyId: cid,
+      name: nbName,
+      plateNumber: nbPlate,
+      totalSeats,
+      layout: '2-2',
+      amenities: ['AC'],
+    });
+    setNbName('');
+    setNbPlate('');
+    setNbSeats('49');
+    flash('Bus added');
+    setTab('buses');
+  };
+
   const handleAddTrip = async (e: React.FormEvent) => {
-  e.preventDefault();
-  await addTrip({
-    routeId: ntRoute,
-    companyId: cid,
-    busId: ntBus,
-    date: ntDate,
-    departureTime: ntDep,
-    arrivalTime: ntArr,
-    price: parseInt(ntPrice),
-    totalSeats: buses.find(b => b.id === ntBus)?.totalSeats || 49,
-    onlineSeats: parseInt(ntOnlineSeats),
-    status: 'scheduled'
-  });
-  setNtRoute(''); setNtBus(''); setNtDate('');
-  setNtDep(''); setNtArr(''); setNtPrice(''); setNtOnlineSeats('');
-  flash('Trip scheduled');
-  setTab('trips');
-};
+    e.preventDefault();
+
+    const selectedBus = buses.find(b => b.id === ntBus);
+    const totalSeats = selectedBus?.totalSeats || 49;
+    const price = parseRwfAmount(ntPrice);
+    const onlineSeats = parsePositiveInteger(ntOnlineSeats);
+
+    if (!ntRoute || !ntBus || !ntDate || !ntDep || !ntArr) {
+      flash('Complete the trip form before scheduling');
+      return;
+    }
+
+    if (!price) {
+      flash('Enter a valid trip price such as 3500 or 3,500');
+      return;
+    }
+
+    if (!onlineSeats) {
+      flash('Enter a valid number of online seats greater than zero');
+      return;
+    }
+
+    if (onlineSeats > totalSeats) {
+      flash(`Online seats cannot exceed the bus capacity of ${totalSeats}`);
+      return;
+    }
+
+    await addTrip({
+      routeId: ntRoute,
+      companyId: cid,
+      busId: ntBus,
+      date: ntDate,
+      departureTime: ntDep,
+      arrivalTime: ntArr,
+      price,
+      totalSeats,
+      onlineSeats,
+      status: 'scheduled'
+    });
+    setNtRoute('');
+    setNtBus('');
+    setNtDate('');
+    setNtDep('');
+    setNtArr('');
+    setNtPrice('');
+    setNtOnlineSeats('');
+    flash('Trip scheduled');
+    setTab('trips');
+  };
 
   const resetTemplateForm = () => {
     setTsRoute('');
@@ -145,17 +223,41 @@ const CompanyDashboard: React.FC = () => {
     if (!tsDaysOfWeek.length) return;
 
     const totalSeats = buses.find(b => b.id === tsBus)?.totalSeats || 49;
+    const price = parseRwfAmount(tsPrice);
+    const onlineSeats = parsePositiveInteger(tsOnlineSeats);
+    const sellDaysAhead = parsePositiveInteger(tsSellDaysAhead);
+
+    if (!price) {
+      flash('Enter a valid schedule price such as 3500 or 3,500');
+      return;
+    }
+
+    if (!onlineSeats) {
+      flash('Enter a valid number of online seats greater than zero');
+      return;
+    }
+
+    if (onlineSeats > totalSeats) {
+      flash(`Online seats cannot exceed the bus capacity of ${totalSeats}`);
+      return;
+    }
+
+    if (!sellDaysAhead) {
+      flash('Sell days ahead must be a whole number greater than zero');
+      return;
+    }
+
     const payload: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
       companyId: cid,
       routeId: tsRoute,
       busId: tsBus,
       departureTime: tsDep,
       arrivalTime: tsArr,
-      price: parseInt(tsPrice),
-      onlineSeats: parseInt(tsOnlineSeats),
+      price,
+      onlineSeats,
       totalSeats,
       daysOfWeek: tsDaysOfWeek.slice().sort((a, b) => a - b),
-      sellDaysAhead: parseInt(tsSellDaysAhead) || 7,
+      sellDaysAhead,
       active: true,
     };
 
@@ -281,7 +383,7 @@ const CompanyDashboard: React.FC = () => {
               <Select options={cityOpts} value={nrOrigin} onChange={setNrOrigin} label="Origin" placeholder="Select city" searchable required />
               <Select options={cityOpts} value={nrDest} onChange={setNrDest} label="Destination" placeholder="Select city" searchable required />
               <div className="grid grid-cols-2 gap-2">
-                <div><label htmlFor="route-distance" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Distance (km)</label><input id="route-distance" type="number" value={nrDist} onChange={e => setNrDist(e.target.value)} className={field} required title="Distance in kilometers" aria-label="Distance in kilometers" /></div>
+                <div><label htmlFor="route-distance" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Distance (km)</label><input id="route-distance" type="number" min="1" step="1" value={nrDist} onChange={e => setNrDist(e.target.value)} className={field} required title="Distance in kilometers" aria-label="Distance in kilometers" /></div>
                 <div><label htmlFor="route-duration" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Duration</label><input id="route-duration" type="text" value={nrDur} onChange={e => setNrDur(e.target.value)} placeholder="2h 30min" className={field} required title="Route duration" aria-label="Route duration" /></div>
               </div>
               <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Add route</button>
@@ -312,7 +414,7 @@ const CompanyDashboard: React.FC = () => {
             <form onSubmit={handleAddBus} className="space-y-3">
               <div><label htmlFor="bus-name" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Bus name</label><input id="bus-name" type="text" value={nbName} onChange={e => setNbName(e.target.value)} placeholder="RE-003" className={field} required title="Bus name" aria-label="Bus name" /></div>
               <div><label htmlFor="bus-plate" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Plate number</label><input id="bus-plate" type="text" value={nbPlate} onChange={e => setNbPlate(e.target.value)} placeholder="RA 999 Z" className={field} required title="Plate number" aria-label="Plate number" /></div>
-              <div><label htmlFor="bus-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Seats</label><input id="bus-seats" type="number" value={nbSeats} onChange={e => setNbSeats(e.target.value)} className={field} required title="Seat capacity" aria-label="Seat capacity" /></div>
+              <div><label htmlFor="bus-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Seats</label><input id="bus-seats" type="number" min="1" step="1" value={nbSeats} onChange={e => setNbSeats(e.target.value)} className={field} required title="Seat capacity" aria-label="Seat capacity" /></div>
               <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Add bus</button>
             </form>
           </div>
@@ -414,9 +516,13 @@ const CompanyDashboard: React.FC = () => {
                 <div><label htmlFor="schedule-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="schedule-departure" type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required title="Schedule departure time" aria-label="Schedule departure time" /></div>
                 <div><label htmlFor="schedule-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="schedule-arrival" type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required title="Schedule arrival time" aria-label="Schedule arrival time" /></div>
               </div>
-              <div><label htmlFor="schedule-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input id="schedule-price" type="number" value={tsPrice} onChange={e => setTsPrice(e.target.value)} className={field} required title="Ticket price" aria-label="Ticket price" /></div>
-              <div><label htmlFor="schedule-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input id="schedule-online-seats" type="number" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required title="Online seats" aria-label="Online seats" /></div>
-              <div><label htmlFor="schedule-sell-days" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input id="schedule-sell-days" type="number" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required title="Sell days ahead" aria-label="Sell days ahead" /></div>
+              <div>
+                <label htmlFor="schedule-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
+                <input id="schedule-price" type="text" inputMode="numeric" value={tsPrice} onChange={e => setTsPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Ticket price" aria-label="Ticket price" />
+                <p className="text-[10px] text-gray-400 mt-1">Accepts whole RWF values like 3500 or 3,500.</p>
+              </div>
+              <div><label htmlFor="schedule-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input id="schedule-online-seats" type="number" min="1" step="1" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required title="Online seats" aria-label="Online seats" /></div>
+              <div><label htmlFor="schedule-sell-days" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input id="schedule-sell-days" type="number" min="1" step="1" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required title="Sell days ahead" aria-label="Sell days ahead" /></div>
               <div>
                 <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">Days of week</label>
                 <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-700">
@@ -549,7 +655,11 @@ const CompanyDashboard: React.FC = () => {
                 <div><label htmlFor="trip-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="trip-departure" type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required title="Trip departure time" aria-label="Trip departure time" /></div>
                 <div><label htmlFor="trip-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="trip-arrival" type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required title="Trip arrival time" aria-label="Trip arrival time" /></div>
               </div>
-              <div><label htmlFor="trip-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label><input id="trip-price" type="number" value={ntPrice} onChange={e => setNtPrice(e.target.value)} className={field} required title="Trip price" aria-label="Trip price" /></div>
+              <div>
+                <label htmlFor="trip-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
+                <input id="trip-price" type="text" inputMode="numeric" value={ntPrice} onChange={e => setNtPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Trip price" aria-label="Trip price" />
+                <p className="text-[10px] text-gray-400 mt-1">Accepts whole RWF values like 3500 or 3,500.</p>
+              </div>
               <div>
   <label htmlFor="trip-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
     Online seats
@@ -557,6 +667,8 @@ const CompanyDashboard: React.FC = () => {
   <input
     id="trip-online-seats"
     type="number"
+    min="1"
+    step="1"
     value={ntOnlineSeats}
     onChange={e => setNtOnlineSeats(e.target.value)}
     placeholder="Seats available to book online"

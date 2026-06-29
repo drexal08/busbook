@@ -143,9 +143,15 @@ export const handler = async (event) => {
     const tripId = String(body.tripId || '').trim();
     const seatNumber = Number(body.seatNumber);
     const phone = String(body.phone || '').replace(/\s+/g, '');
+    const paymentMethod = String(body.paymentMethod || '').trim();
+    const validPaymentMethods = new Set(['mtn_momo', 'airtel_money']);
 
     if (!tripId || !Number.isInteger(seatNumber) || seatNumber <= 0 || !phone) {
       return json(400, { error: 'Trip, seat, and phone number are required' });
+    }
+
+    if (paymentMethod && !validPaymentMethods.has(paymentMethod)) {
+      return json(400, { error: 'Unsupported payment method' });
     }
 
     const [tripSnap, userSnap] = await Promise.all([
@@ -236,6 +242,7 @@ export const handler = async (event) => {
         seatNumber,
         amount: trip.price,
         phone,
+        ...(paymentMethod ? { paymentMethod } : {}),
         status: 'pending',
         seatReserved: true,
         passengerName: user.name || '',

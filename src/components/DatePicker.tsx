@@ -20,6 +20,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
   onChange,
   min,
   label,
+  required = false,
 }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -130,6 +131,17 @@ const DatePicker: React.FC<DatePickerProps> = ({
           {label}
         </label>
       )}
+
+      <input
+        tabIndex={-1}
+        aria-hidden="true"
+        type="date"
+        value={value}
+        min={min}
+        onChange={() => {}}
+        required={required}
+        className="absolute h-0 w-0 opacity-0 pointer-events-none"
+      />
 
       {/* Trigger */}
       <button
