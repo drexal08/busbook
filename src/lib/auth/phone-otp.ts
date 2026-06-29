@@ -62,7 +62,7 @@ async function createRecaptcha(containerId: string, config: RecaptchaConfig = DE
   }
 }
 
-export async function verifyRecaptchaScore(verifier: RecaptchaVerifier, minScore: number = 0.5): Promise<boolean> {
+export async function verifyRecaptchaScore(_verifier: RecaptchaVerifier, minScore: number = 0.5): Promise<boolean> {
   try {
     // Firebase Auth automatically handles reCAPTCHA verification
     // For additional security, you could implement custom score checking here

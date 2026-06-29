@@ -113,6 +113,7 @@ export interface Payment {
   seatNumber: number;
   amount: number;
   phone: string;
+  paymentMethod?: 'mtn_momo' | 'airtel_money';
   status: 'pending' | 'completed' | 'failed';
   passengerName: string;
   passengerPhone: string;

@@ -22,6 +22,7 @@ const Select: React.FC<SelectProps> = ({
   onChange,
   placeholder = 'Select…',
   label,
+  required = false,
   searchable = false,
 }) => {
   const [open, setOpen] = useState(false);
@@ -67,6 +68,22 @@ const Select: React.FC<SelectProps> = ({
           {label}
         </label>
       )}
+
+      <select
+        tabIndex={-1}
+        aria-hidden="true"
+        value={value}
+        onChange={() => {}}
+        required={required}
+        className="absolute h-0 w-0 opacity-0 pointer-events-none"
+      >
+        <option value="">{placeholder}</option>
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
 
       {/* Trigger */}
       <button

@@ -8,13 +8,65 @@ import { db } from '../lib/firebase';
 import { Trip } from '../types';
 import { IconArrowLeft, IconArrowRight, IconCheckCircle, IconSeat, IconClock, IconCalendar, IconBus, IconLock, IconLogin } from '../components/Icons';
 
+const PAYMENT_METHOD_CONFIG = {
+  mtn_momo: {
+    name: 'MTN MoMo',
+    prefixes: ['078', '079'],
+    intlPrefixes: ['+25078', '+25079', '25078', '25079'],
+    placeholder: '0781234567 or +25078XXXXXXX',
+  },
+  airtel_money: {
+    name: 'Airtel Money',
+    prefixes: ['072', '073'],
+    intlPrefixes: ['+25072', '+25073', '25072', '25073'],
+    placeholder: '0721234567 or +25072XXXXXXX',
+  },
+} as const;
+
+type PaymentMethod = keyof typeof PAYMENT_METHOD_CONFIG;
+
+function normalizePhoneInput(value: string) {
+  const compact = value.replace(/\s+/g, '');
+  const stripped = compact.replace(/[^\d+]/g, '');
+
+  if (stripped.startsWith('+')) {
+    return `+${stripped.slice(1).replace(/\+/g, '')}`;
+  }
+
+  return stripped.replace(/\+/g, '');
+}
+
+function validatePaymentPhone(phone: string, paymentMethod: PaymentMethod) {
+  const normalized = normalizePhoneInput(phone);
+  const methodConfig = PAYMENT_METHOD_CONFIG[paymentMethod];
+  const isRwandaMobile = /^(\+250|250|0)7\d{8}$/.test(normalized);
+
+  if (!normalized) {
+    return 'Phone number is required';
+  }
+
+  if (!isRwandaMobile) {
+    return 'Use a valid Rwanda mobile number';
+  }
+
+  const matchesProvider =
+    methodConfig.prefixes.some(prefix => normalized.startsWith(prefix)) ||
+    methodConfig.intlPrefixes.some(prefix => normalized.startsWith(prefix));
+
+  if (!matchesProvider) {
+    return `Use a ${methodConfig.name} number starting with ${methodConfig.prefixes.join(' or ')}`;
+  }
+
+  return '';
+}
+
 const BookingPage: React.FC = () => {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
   const { trips, bookings, getCompanyName, getRouteInfo, getBusInfo } = useData();
   const { user, isAuthenticated } = useAuth();
   const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'mtn_momo' | 'airtel_money'>('mtn_momo');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mtn_momo');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [step, setStep] = useState<'seat' | 'payment' | 'processing' | 'success'>('seat');
   const [bookingId, setBookingId] = useState('');
@@ -210,10 +262,9 @@ const layoutRows = useMemo(() => {
   const handleBooking = async () => {
     if (!selectedSeat || !user) return;
     
-    // Validate phone number
-    const cleanPhone = paymentPhone.replace(/\s+/g, '');
-    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
-      setPaymentError('Invalid phone number. Must start with 078, 079, 073, 072 or +250');
+    const phoneError = validatePaymentPhone(paymentPhone, paymentMethod);
+    if (phoneError) {
+      setPaymentError(phoneError);
       return;
     }
     
@@ -223,7 +274,8 @@ const layoutRows = useMemo(() => {
       const result = await initiateCashin({
         tripId: trip.id,
         seatNumber: selectedSeat,
-        phone: paymentPhone,
+        phone: normalizePhoneInput(paymentPhone),
+        paymentMethod,
       });
 
       if (result.error || !result.ref) {
@@ -271,6 +323,11 @@ const layoutRows = useMemo(() => {
       </div>
     </div>
   );
+
+  const inlinePhoneError = paymentPhone
+    ? validatePaymentPhone(paymentPhone, paymentMethod)
+    : '';
+  const paymentPlaceholder = PAYMENT_METHOD_CONFIG[paymentMethod].placeholder;
 
   return (
     <div className="min-h-[calc(100vh-60px)] bg-surface-secondary">
@@ -432,18 +489,20 @@ const layoutRows = useMemo(() => {
                   <div>
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Phone number</label>
                     <input type="tel" value={paymentPhone} onChange={e => {
-                      const value = e.target.value.replace(/\s+/g, '');
-                      // Allow only digits and + sign
-                      if (/^[0+]*$/.test(value)) {
-                        setPaymentPhone(value);
+                      setPaymentPhone(normalizePhoneInput(e.target.value));
+                      if (paymentError) {
+                        setPaymentError('');
                       }
-                    }} placeholder="0781234567 or +250788123456"
+                    }} placeholder={paymentPlaceholder}
                       className="w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-2.5 text-xs focus:border-primary-400 outline-none transition-all" />
-                    {paymentPhone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(paymentPhone.replace(/\s+/g, '')) && (
-                      <p className="text-[10px] text-red-500 mt-1">Must start with 078, 079, 073, 072 or +250</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Accepted for {PAYMENT_METHOD_CONFIG[paymentMethod].name}: {PAYMENT_METHOD_CONFIG[paymentMethod].prefixes.join(', ')} or the matching `+250` format.
+                    </p>
+                    {inlinePhoneError && (
+                      <p className="text-[10px] text-red-500 mt-1">{inlinePhoneError}</p>
                     )}
                   </div>
-                  <button onClick={handleBooking} disabled={!paymentPhone}
+                  <button onClick={handleBooking} disabled={!paymentPhone || Boolean(inlinePhoneError)}
                     className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl text-xs transition-all">
                     Pay {trip.price.toLocaleString()} RWF
                   </button>
