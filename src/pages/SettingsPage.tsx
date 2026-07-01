@@ -28,6 +28,11 @@ import {
 } from '../components/Icons';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../lib/auth/constants';
 import { toAuthError } from '../lib/auth/errors';
+import {
+  normalizePhoneInput,
+  toRwandaE164Phone,
+  validateSupportedPhone,
+} from '../lib/phone';
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -41,6 +46,9 @@ const SettingsPage: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [name, setName] = useState('');
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const normalizedPhone = normalizePhoneInput(phone);
+  const canonicalPhone = toRwandaE164Phone(normalizedPhone);
+  const phoneValidationError = normalizedPhone ? validateSupportedPhone(normalizedPhone) : '';
 
   useEffect(() => {
     if (!loading && !user) {
@@ -181,15 +189,9 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleSendPhoneOtp = async () => {
-    if (!phone.trim()) {
-      setFeedback('', ERROR_MESSAGES.PHONE_REQUIRED);
-      return;
-    }
-
-    // Validate phone number
-    const cleanPhone = phone.trim().replace(/\s+/g, '');
-    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
-      setFeedback('', 'Invalid phone number. Must start with 078, 079, 073, 072 or +250');
+    const phoneError = validateSupportedPhone(normalizedPhone);
+    if (phoneError) {
+      setFeedback('', !normalizedPhone ? ERROR_MESSAGES.PHONE_REQUIRED : phoneError);
       return;
     }
 
@@ -197,7 +199,7 @@ const SettingsPage: React.FC = () => {
       setBusy('phone-otp-send');
       setFeedback();
       const session = await requestCurrentUserPhoneOtp(
-        cleanPhone,
+        canonicalPhone,
         'settings-phone-recaptcha'
       );
       setPhoneSession(session);
@@ -221,7 +223,7 @@ const SettingsPage: React.FC = () => {
       setFeedback();
       await confirmCurrentUserPhoneOtp(phoneSession, phoneOtp.trim());
       await updateUserVerificationFlags(user.id, {
-        phone: phone.trim(),
+        phone: canonicalPhone || normalizedPhone,
         phoneVerified: true,
       });
       setPhoneSession(null);
@@ -472,17 +474,13 @@ const SettingsPage: React.FC = () => {
                     type="tel"
                     value={phone}
                     onChange={(e) => {
-                      const value = e.target.value.replace(/\s+/g, '');
-                      // Allow only digits and + sign
-                      if (/^[0+]*$/.test(value)) {
-                        setPhone(value);
-                      }
+                      setPhone(normalizePhoneInput(e.target.value));
                     }}
                     placeholder="0781234567 or +250788123456"
                     className="w-full rounded-xl border border-border-light bg-surface-secondary px-4 py-3 text-[13px] text-gray-800 font-medium outline-none transition-all focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
                   />
-                  {phone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(phone.replace(/\s+/g, '')) && (
-                    <p className="text-[10px] text-red-500 col-span-3">Must start with 078, 079, 073, 072 or +250</p>
+                  {phoneValidationError && (
+                    <p className="text-[10px] text-red-500 col-span-3">{phoneValidationError}</p>
                   )}
                   <button
                     type="button"

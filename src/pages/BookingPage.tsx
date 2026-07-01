@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { initiateCashin, listenToPayment } from '../lib/payments';
+import { isValidRwandaMobilePhone, normalizePhoneInput } from '../lib/phone';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Trip } from '../types';
@@ -48,21 +49,10 @@ const PAYMENT_OPTIONS: Array<{
   },
 ];
 
-function normalizePhoneInput(value: string) {
-  const compact = value.replace(/\s+/g, '');
-  const stripped = compact.replace(/[^\d+]/g, '');
-
-  if (stripped.startsWith('+')) {
-    return `+${stripped.slice(1).replace(/\+/g, '')}`;
-  }
-
-  return stripped.replace(/\+/g, '');
-}
-
 function validatePaymentPhone(phone: string, paymentMethod: PaymentMethod) {
   const normalized = normalizePhoneInput(phone);
   const methodConfig = PAYMENT_METHOD_CONFIG[paymentMethod];
-  const isRwandaMobile = /^(\+250|250|0)7\d{8}$/.test(normalized);
+  const isRwandaMobile = isValidRwandaMobilePhone(normalized);
 
   if (!normalized) {
     return 'Phone number is required';
