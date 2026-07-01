@@ -64,6 +64,8 @@ export interface TripTemplate {
   busId: string;
   departureTime: string;
   arrivalTime: string;
+  frequencyMinutes?: 30 | 60;
+  lastDepartureTime?: string;
   price: number;
   onlineSeats: number;
   totalSeats: number;
