@@ -8,6 +8,8 @@ export type PaymentStatus = 'pending' | 'completed' | 'failed';
 export type PaymentMethod = 'mtn_momo' | 'airtel_money';
 export type BusLayout = '2-2' | '2-1';
 export type TripSource = 'template' | 'manual';
+export type TripTemplateRecurrenceMode = 'weekly' | 'interval';
+export type TripTemplateIntervalUnit = 'minutes' | 'hours';
 
 export interface User {
   id: string;
@@ -62,6 +64,7 @@ export interface TripTemplate {
   companyId: string;
   routeId: string;
   busId: string;
+  recurrenceMode?: TripTemplateRecurrenceMode;
   departureTime: string;
   arrivalTime: string;
   price: number;
@@ -69,6 +72,9 @@ export interface TripTemplate {
   totalSeats: number;
   daysOfWeek: number[];
   sellDaysAhead: number;
+  startDate?: string;
+  intervalValue?: number;
+  intervalUnit?: TripTemplateIntervalUnit;
   active: boolean;
   createdAt: string;
   updatedAt?: string;

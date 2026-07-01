@@ -12,6 +12,16 @@ import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/f
 import { IconCheck, IconX } from '../components/Icons';
 import { TripTemplate, User } from '../types';
 
+const DAY_OPTIONS = [
+  { v: 1, l: 'Monday', s: 'Mon' },
+  { v: 2, l: 'Tuesday', s: 'Tue' },
+  { v: 3, l: 'Wednesday', s: 'Wed' },
+  { v: 4, l: 'Thursday', s: 'Thu' },
+  { v: 5, l: 'Friday', s: 'Fri' },
+  { v: 6, l: 'Saturday', s: 'Sat' },
+  { v: 7, l: 'Sunday', s: 'Sun' },
+] as const;
+
 const CompanyDashboard: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const {
@@ -57,7 +67,11 @@ const CompanyDashboard: React.FC = () => {
   const [tsPrice, setTsPrice] = useState('');
   const [tsOnlineSeats, setTsOnlineSeats] = useState('');
   const [tsSellDaysAhead, setTsSellDaysAhead] = useState('7');
+  const [tsRecurrenceMode, setTsRecurrenceMode] = useState<'weekly' | 'interval'>('weekly');
   const [tsDaysOfWeek, setTsDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [tsStartDate, setTsStartDate] = useState('');
+  const [tsIntervalValue, setTsIntervalValue] = useState('1');
+  const [tsIntervalUnit, setTsIntervalUnit] = useState<'minutes' | 'hours'>('hours');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   const cid = user?.companyId || '';
@@ -79,6 +93,22 @@ const CompanyDashboard: React.FC = () => {
   const cityOpts = useMemo(() => cities.map(c => ({ value: c, label: c })), []);
   const routeOpts = useMemo(() => routes.map(r => ({ value: r.id, label: `${r.origin} → ${r.destination}` })), [routes]);
   const busOpts = useMemo(() => buses.map(b => ({ value: b.id, label: `${b.name} (${b.plateNumber})` })), [buses]);
+  const selectedTripRoute = routes.find(r => r.id === ntRoute);
+  const selectedTripBus = buses.find(b => b.id === ntBus);
+  const selectedScheduleRoute = routes.find(r => r.id === tsRoute);
+  const selectedScheduleBus = buses.find(b => b.id === tsBus);
+  const templateSummaries = useMemo(() => {
+    return templates.map(template => {
+      const dayLabels = DAY_OPTIONS
+        .filter(day => template.daysOfWeek?.includes(day.v))
+        .map(day => day.s)
+        .join(', ');
+      const recurrenceLabel = (template.recurrenceMode || 'weekly') === 'interval'
+        ? `Every ${template.intervalValue || 1} ${template.intervalUnit || 'hours'} from ${template.startDate || today}`
+        : dayLabels || 'Every day';
+      return { id: template.id, recurrenceLabel };
+    });
+  }, [templates, today]);
 
   useEffect(() => {
     if (!cid) return;
@@ -211,7 +241,11 @@ const CompanyDashboard: React.FC = () => {
     setTsPrice('');
     setTsOnlineSeats('');
     setTsSellDaysAhead('7');
+    setTsRecurrenceMode('weekly');
     setTsDaysOfWeek([1, 2, 3, 4, 5, 6, 7]);
+    setTsStartDate(today);
+    setTsIntervalValue('1');
+    setTsIntervalUnit('hours');
     setEditingTemplateId(null);
   };
 
@@ -219,12 +253,12 @@ const CompanyDashboard: React.FC = () => {
     e.preventDefault();
     if (!cid) return;
     if (!tsRoute || !tsBus || !tsDep || !tsArr || !tsPrice || !tsOnlineSeats) return;
-    if (!tsDaysOfWeek.length) return;
 
     const totalSeats = buses.find(b => b.id === tsBus)?.totalSeats || 49;
     const price = parseRwfAmount(tsPrice);
     const onlineSeats = parsePositiveInteger(tsOnlineSeats);
     const sellDaysAhead = parsePositiveInteger(tsSellDaysAhead);
+    const intervalValue = parsePositiveInteger(tsIntervalValue);
 
     if (!price) {
       flash('Enter a valid schedule price such as 3500 or 3,500');
@@ -246,29 +280,66 @@ const CompanyDashboard: React.FC = () => {
       return;
     }
 
+    if (tsRecurrenceMode === 'weekly' && !tsDaysOfWeek.length) {
+      flash('Choose at least one day of the week for this schedule');
+      return;
+    }
+
+    if (tsRecurrenceMode === 'interval') {
+      if (!tsStartDate) {
+        flash('Choose the first departure date for interval schedules');
+        return;
+      }
+
+      if (!intervalValue) {
+        flash('Set how often this trip should repeat in minutes or hours');
+        return;
+      }
+    }
+
+    const existingTemplate = editingTemplateId ? templates.find(t => t.id === editingTemplateId) : null;
     const payload: Omit<TripTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
       companyId: cid,
       routeId: tsRoute,
       busId: tsBus,
+      recurrenceMode: tsRecurrenceMode,
       departureTime: tsDep,
       arrivalTime: tsArr,
       price,
       onlineSeats,
       totalSeats,
-      daysOfWeek: tsDaysOfWeek.slice().sort((a, b) => a - b),
+      daysOfWeek: tsRecurrenceMode === 'weekly' ? tsDaysOfWeek.slice().sort((a, b) => a - b) : [],
       sellDaysAhead,
-      active: true,
+      startDate: tsRecurrenceMode === 'interval' ? tsStartDate : undefined,
+      intervalValue: tsRecurrenceMode === 'interval' ? intervalValue || 1 : undefined,
+      intervalUnit: tsRecurrenceMode === 'interval' ? tsIntervalUnit : undefined,
+      active: existingTemplate?.active ?? true,
     };
 
+    let nextTemplates: TripTemplate[];
     if (editingTemplateId) {
       await updateTripTemplate(editingTemplateId, payload);
+      nextTemplates = templates.map(t => (
+        t.id === editingTemplateId
+          ? { ...t, ...payload, id: editingTemplateId, updatedAt: new Date().toISOString() }
+          : t
+      ));
       flash('Schedule updated');
     } else {
-      await addTripTemplate(payload);
+      const createdId = await addTripTemplate(payload);
+      nextTemplates = [
+        ...templates,
+        {
+          ...payload,
+          id: createdId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
       flash('Schedule created');
     }
 
-    await generateUpcomingTrips(cid);
+    await generateUpcomingTrips(cid, nextTemplates);
     resetTemplateForm();
     setTab('schedules');
   };
@@ -277,15 +348,30 @@ const CompanyDashboard: React.FC = () => {
     return <Navigate to="/login" replace />;
   }
 
-  const tabs = [
-  { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
-  { key: 'routes', label: 'Routes', icon: <IconRoute size={15} /> },
-  { key: 'buses', label: 'Buses', icon: <IconBus size={15} /> },
-  { key: 'schedules', label: 'Schedules', icon: <IconCalendar size={15} /> },
-  { key: 'trips', label: 'Trips', icon: <IconCalendar size={15} /> },
-  { key: 'operators', label: 'Operators', icon: <IconScan size={15} /> },
-  { key: 'bookings', label: 'Bookings', icon: <IconTicket size={15} /> },
-];
+  const tabGroups = [
+    {
+      label: 'Planning',
+      items: [
+        { key: 'overview', label: 'Overview', icon: <IconChart size={15} /> },
+        { key: 'schedules', label: 'Schedules', icon: <IconCalendar size={15} /> },
+        { key: 'trips', label: 'Trips', icon: <IconCalendar size={15} /> },
+      ],
+    },
+    {
+      label: 'Fleet',
+      items: [
+        { key: 'routes', label: 'Routes', icon: <IconRoute size={15} /> },
+        { key: 'buses', label: 'Buses', icon: <IconBus size={15} /> },
+      ],
+    },
+    {
+      label: 'Operations',
+      items: [
+        { key: 'operators', label: 'Operators', icon: <IconScan size={15} /> },
+        { key: 'bookings', label: 'Bookings', icon: <IconTicket size={15} /> },
+      ],
+    },
+  ];
 
   const field = "w-full bg-surface-secondary border border-border-light rounded-xl px-4 py-3 text-[13px] text-gray-800 font-medium focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all";
 
@@ -316,12 +402,22 @@ const CompanyDashboard: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {msg && <div className="bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2.5 rounded-xl mb-4 text-xs font-medium fade-in">{msg}</div>}
 
-        <div className="flex gap-1 mb-6 overflow-x-auto bg-white rounded-xl border border-border p-1">
-          {tabs.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-all whitespace-nowrap ${tab === t.key ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:bg-surface-secondary'}`}>
-              {t.icon} {t.label}
-            </button>
+        <div className="mb-6 grid gap-3 lg:grid-cols-3">
+          {tabGroups.map(group => (
+            <div key={group.label} className="bg-white rounded-xl border border-border p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-400 mb-2">{group.label}</div>
+              <div className="flex flex-wrap gap-1">
+                {group.items.map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => setTab(item.key)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-medium transition-all whitespace-nowrap ${tab === item.key ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:bg-surface-secondary'}`}
+                  >
+                    {item.icon} {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 
@@ -342,20 +438,49 @@ const CompanyDashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-            <div className="bg-white rounded-xl border border-border p-5">
-              <h3 className="font-semibold text-gray-900 text-sm mb-3">Quick actions</h3>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'Add route', icon: <IconRoute size={18} />, t: 'addRoute', c: 'text-primary-600 bg-primary-50 hover:bg-primary-100' },
-                  { label: 'Add bus', icon: <IconBus size={18} />, t: 'addBus', c: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' },
-                  { label: 'Add trip', icon: <IconCalendar size={18} />, t: 'addTrip', c: 'text-violet-600 bg-violet-50 hover:bg-violet-100' },
-                ].map((a, i) => (
-                  <button key={i} onClick={() => setTab(a.t)} className={`p-4 rounded-xl text-center transition-all ${a.c}`}>
-                    <div className="flex justify-center mb-1.5">{a.icon}</div>
-                    <div className="text-[11px] font-semibold">{a.label}</div>
-                  </button>
-                ))}
-              </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {[
+                {
+                  title: 'Fleet setup',
+                  desc: 'Keep route and bus records in one place.',
+                  actions: [
+                    { label: 'Add route', t: 'addRoute' },
+                    { label: 'Add bus', t: 'addBus' },
+                  ],
+                },
+                {
+                  title: 'Trip planning',
+                  desc: 'Create one-time trips or reusable schedules.',
+                  actions: [
+                    { label: 'One-time trip', t: 'addTrip' },
+                    { label: 'Recurring schedule', t: 'addSchedule' },
+                  ],
+                },
+                {
+                  title: 'Operations',
+                  desc: 'Review trips, bookings, and operator activity.',
+                  actions: [
+                    { label: 'Open trips', t: 'trips' },
+                    { label: 'Open bookings', t: 'bookings' },
+                  ],
+                },
+              ].map(section => (
+                <div key={section.title} className="bg-white rounded-xl border border-border p-5">
+                  <h3 className="font-semibold text-gray-900 text-sm">{section.title}</h3>
+                  <p className="text-[11px] text-gray-400 mt-1 mb-4">{section.desc}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {section.actions.map(action => (
+                      <button
+                        key={action.label}
+                        onClick={() => setTab(action.t)}
+                        className="rounded-xl border border-border bg-surface-secondary px-3 py-3 text-[11px] font-semibold text-gray-700 hover:bg-surface-tertiary transition-all"
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -448,8 +573,9 @@ const CompanyDashboard: React.FC = () => {
               {templates.map(t => {
                 const r = getRouteInfo(t.routeId);
                 const busLabel = buses.find(b => b.id === t.busId)?.name || 'Bus';
+                const recurrenceLabel = templateSummaries.find(summary => summary.id === t.id)?.recurrenceLabel || 'Every day';
                 return (
-                  <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between gap-3">
+                  <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
                         {r?.origin} <IconArrowRight size={11} className="text-gray-300" /> {r?.destination}
@@ -460,11 +586,20 @@ const CompanyDashboard: React.FC = () => {
                       <div className="text-[11px] text-gray-400 mt-0.5">
                         {t.departureTime}–{t.arrivalTime} · {busLabel} · {t.onlineSeats}/{t.totalSeats} online · {t.price.toLocaleString()} RWF · {t.sellDaysAhead} days ahead
                       </div>
+                      <div className="text-[11px] text-primary-600 mt-1 font-medium">
+                        {recurrenceLabel}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
                         onClick={async () => {
+                          const nextTemplates = templates.map(template => (
+                            template.id === t.id ? { ...template, active: !t.active } : template
+                          ));
                           await updateTripTemplate(t.id, { active: !t.active });
+                          if (!t.active) {
+                            await generateUpcomingTrips(cid, nextTemplates);
+                          }
                           flash(t.active ? 'Schedule paused' : 'Schedule activated');
                         }}
                         className="bg-surface-secondary text-gray-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
@@ -481,7 +616,11 @@ const CompanyDashboard: React.FC = () => {
                           setTsPrice(String(t.price));
                           setTsOnlineSeats(String(t.onlineSeats));
                           setTsSellDaysAhead(String(t.sellDaysAhead || 7));
+                          setTsRecurrenceMode(t.recurrenceMode || 'weekly');
                           setTsDaysOfWeek(Array.isArray(t.daysOfWeek) ? t.daysOfWeek : [1,2,3,4,5,6,7]);
+                          setTsStartDate(t.startDate || today);
+                          setTsIntervalValue(String(t.intervalValue || 1));
+                          setTsIntervalUnit(t.intervalUnit || 'hours');
                           setTab('addSchedule');
                         }}
                         className="bg-surface-secondary text-gray-600 px-3 py-2 rounded-lg text-[11px] font-semibold hover:bg-surface-tertiary"
@@ -508,54 +647,138 @@ const CompanyDashboard: React.FC = () => {
         )}
 
         {tab === 'addSchedule' && (
-          <div className="bg-white rounded-xl border border-border p-6 max-w-lg">
-            <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-1.5"><IconPlus size={15} /> {editingTemplateId ? 'Edit schedule' : 'Add schedule'}</h3>
-            <form onSubmit={handleSaveTemplate} className="space-y-3">
-              <Select options={routeOpts} value={tsRoute} onChange={setTsRoute} label="Route" placeholder="Select route" required />
-              <Select options={busOpts} value={tsBus} onChange={setTsBus} label="Bus" placeholder="Select bus" required />
-              <div className="grid grid-cols-2 gap-2">
-                <div><label htmlFor="schedule-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="schedule-departure" type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required title="Schedule departure time" aria-label="Schedule departure time" /></div>
-                <div><label htmlFor="schedule-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="schedule-arrival" type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required title="Schedule arrival time" aria-label="Schedule arrival time" /></div>
-              </div>
-              <div>
-                <label htmlFor="schedule-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
-                <input id="schedule-price" type="text" inputMode="numeric" value={tsPrice} onChange={e => setTsPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Ticket price" aria-label="Ticket price" />
-                <p className="text-[10px] text-gray-400 mt-1">Accepts whole RWF values like 3500 or 3,500.</p>
-              </div>
-              <div><label htmlFor="schedule-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label><input id="schedule-online-seats" type="number" min="1" step="1" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required title="Online seats" aria-label="Online seats" /></div>
-              <div><label htmlFor="schedule-sell-days" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label><input id="schedule-sell-days" type="number" min="1" step="1" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required title="Sell days ahead" aria-label="Sell days ahead" /></div>
-              <div>
-                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">Days of week</label>
-                <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-700">
-                  {[
-                    { v: 1, l: 'Monday' },
-                    { v: 2, l: 'Tuesday' },
-                    { v: 3, l: 'Wednesday' },
-                    { v: 4, l: 'Thursday' },
-                    { v: 5, l: 'Friday' },
-                    { v: 6, l: 'Saturday' },
-                    { v: 7, l: 'Sunday' },
-                  ].map(d => (
-                    <label key={d.v} className="flex items-center gap-2 bg-surface-secondary border border-border-light rounded-xl px-3 py-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={tsDaysOfWeek.includes(d.v)}
-                        onChange={() => setTsDaysOfWeek(prev => prev.includes(d.v) ? prev.filter(x => x !== d.v) : [...prev, d.v])}
-                      />
-                      <span className="font-medium">{d.l}</span>
-                    </label>
-                  ))}
+          <div className="bg-white rounded-xl border border-border p-6">
+            <div className="max-w-4xl">
+              <h3 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1.5"><IconPlus size={15} /> {editingTemplateId ? 'Edit schedule' : 'Add schedule'}</h3>
+              <p className="text-[11px] text-gray-400 mb-5">Use weekly schedules for fixed weekdays, or interval schedules for departures every few minutes or hours.</p>
+            </div>
+            <form onSubmit={handleSaveTemplate} className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_320px]">
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-border p-4">
+                  <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Trip details</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Select options={routeOpts} value={tsRoute} onChange={setTsRoute} label="Route" placeholder="Select route" required />
+                    <Select options={busOpts} value={tsBus} onChange={setTsBus} label="Bus" placeholder="Select bus" required />
+                    <div><label htmlFor="schedule-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="schedule-departure" type="time" value={tsDep} onChange={e => setTsDep(e.target.value)} className={field} required title="Schedule departure time" aria-label="Schedule departure time" /></div>
+                    <div><label htmlFor="schedule-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="schedule-arrival" type="time" value={tsArr} onChange={e => setTsArr(e.target.value)} className={field} required title="Schedule arrival time" aria-label="Schedule arrival time" /></div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <h4 className="text-[12px] font-semibold text-gray-900">Recurrence</h4>
+                      <p className="text-[11px] text-gray-400">Choose how this schedule should keep creating trips.</p>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-xl bg-surface-secondary p-1">
+                      <button
+                        type="button"
+                        onClick={() => setTsRecurrenceMode('weekly')}
+                        className={`px-3 py-2 rounded-lg text-[11px] font-semibold transition-all ${tsRecurrenceMode === 'weekly' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}
+                      >
+                        Weekly
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTsRecurrenceMode('interval');
+                          if (!tsStartDate) setTsStartDate(today);
+                        }}
+                        className={`px-3 py-2 rounded-lg text-[11px] font-semibold transition-all ${tsRecurrenceMode === 'interval' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}
+                      >
+                        Every X time
+                      </button>
+                    </div>
+                  </div>
+
+                  {tsRecurrenceMode === 'weekly' ? (
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 block">Days of week</label>
+                      <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-700">
+                        {DAY_OPTIONS.map(d => (
+                          <label key={d.v} className="flex items-center gap-2 bg-surface-secondary border border-border-light rounded-xl px-3 py-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={tsDaysOfWeek.includes(d.v)}
+                              onChange={() => setTsDaysOfWeek(prev => prev.includes(d.v) ? prev.filter(x => x !== d.v) : [...prev, d.v])}
+                            />
+                            <span className="font-medium">{d.l}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <DatePicker value={tsStartDate || today} onChange={setTsStartDate} min={today} label="First departure date" required />
+                      <div>
+                        <label htmlFor="schedule-interval-value" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Repeat every</label>
+                        <input
+                          id="schedule-interval-value"
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={tsIntervalValue}
+                          onChange={e => setTsIntervalValue(e.target.value)}
+                          className={field}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="schedule-interval-unit" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Unit</label>
+                        <select
+                          id="schedule-interval-unit"
+                          value={tsIntervalUnit}
+                          onChange={e => setTsIntervalUnit(e.target.value as 'minutes' | 'hours')}
+                          className={field}
+                        >
+                          <option value="minutes">Minutes</option>
+                          <option value="hours">Hours</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Selling rules</h4>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label htmlFor="schedule-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
+                      <input id="schedule-price" type="text" inputMode="numeric" value={tsPrice} onChange={e => setTsPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Ticket price" aria-label="Ticket price" />
+                    </div>
+                    <div>
+                      <label htmlFor="schedule-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label>
+                      <input id="schedule-online-seats" type="number" min="1" step="1" value={tsOnlineSeats} onChange={e => setTsOnlineSeats(e.target.value)} className={field} required title="Online seats" aria-label="Online seats" />
+                    </div>
+                    <div>
+                      <label htmlFor="schedule-sell-days" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Sell days ahead</label>
+                      <input id="schedule-sell-days" type="number" min="1" step="1" value={tsSellDaysAhead} onChange={e => setTsSellDaysAhead(e.target.value)} className={field} required title="Sell days ahead" aria-label="Sell days ahead" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2">Accepts whole RWF values like 3500 or 3,500.</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">{editingTemplateId ? 'Save changes' : 'Create schedule'}</button>
+                  <button
+                    type="button"
+                    onClick={() => { resetTemplateForm(); setTab('schedules'); }}
+                    className="bg-surface-secondary text-gray-600 px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-surface-tertiary transition-all"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">{editingTemplateId ? 'Save changes' : 'Create schedule'}</button>
-                <button
-                  type="button"
-                  onClick={() => { resetTemplateForm(); setTab('schedules'); }}
-                  className="bg-surface-secondary text-gray-600 px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-surface-tertiary transition-all"
-                >
-                  Cancel
-                </button>
+
+              <div className="rounded-2xl border border-border bg-surface-secondary/70 p-4 h-fit">
+                <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Schedule summary</h4>
+                <div className="space-y-2 text-[11px] text-gray-600">
+                  <div><span className="font-semibold text-gray-900">Route:</span> {selectedScheduleRoute ? `${selectedScheduleRoute.origin} → ${selectedScheduleRoute.destination}` : 'Select a route'}</div>
+                  <div><span className="font-semibold text-gray-900">Bus:</span> {selectedScheduleBus ? `${selectedScheduleBus.name} (${selectedScheduleBus.totalSeats} seats)` : 'Select a bus'}</div>
+                  <div><span className="font-semibold text-gray-900">Pattern:</span> {tsRecurrenceMode === 'interval' ? `Every ${tsIntervalValue || '1'} ${tsIntervalUnit} starting ${tsStartDate || today}` : DAY_OPTIONS.filter(day => tsDaysOfWeek.includes(day.v)).map(day => day.s).join(', ') || 'Choose days'}</div>
+                  <div><span className="font-semibold text-gray-900">Window:</span> Generates trips up to {tsSellDaysAhead || '7'} days ahead</div>
+                  <div><span className="font-semibold text-gray-900">Capacity:</span> {tsOnlineSeats || '0'} online seats from {selectedScheduleBus?.totalSeats ?? '—'} total seats</div>
+                </div>
               </div>
             </form>
           </div>
@@ -590,7 +813,7 @@ const CompanyDashboard: React.FC = () => {
             <div className="space-y-2">{(() => {
               const visibleTrips = trips
                 .filter(t => tripView === 'upcoming' ? t.date >= today : t.date < today)
-                .sort((a, b) => a.date.localeCompare(b.date));
+                .sort((a, b) => `${a.date}${a.departureTime}`.localeCompare(`${b.date}${b.departureTime}`));
 
               return (
                 <>
@@ -599,7 +822,12 @@ const CompanyDashboard: React.FC = () => {
               return (
                 <div key={t.id} className="bg-white rounded-xl border border-border p-4 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">{r?.origin} <IconArrowRight size={11} className="text-gray-300" /> {r?.destination}</div>
+                    <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
+                      {r?.origin} <IconArrowRight size={11} className="text-gray-300" /> {r?.destination}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${t.source === 'template' ? 'bg-primary-50 text-primary-700' : 'bg-violet-50 text-violet-700'}`}>
+                        {t.source === 'template' ? 'scheduled' : 'one-time'}
+                      </span>
+                    </div>
                     <div className="text-[11px] text-gray-400 mt-0.5">{t.date} · {t.departureTime}–{t.arrivalTime} · {t.availableSeats}/{t.totalSeats} seats · {t.price.toLocaleString()} RWF</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -637,7 +865,7 @@ const CompanyDashboard: React.FC = () => {
                 </div>
                     );
                   })}
-                  {visibleTrips.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No trips</div>}
+                  {visibleTrips.length === 0 && <div className="text-center py-8 text-xs text-gray-400">No trips yet. Create a one-time trip or generate them from your schedules.</div>}
                 </>
               );
             })()}</div>
@@ -646,43 +874,68 @@ const CompanyDashboard: React.FC = () => {
 
         {/* Add Trip */}
         {tab === 'addTrip' && (
-          <div className="bg-white rounded-xl border border-border p-6 max-w-lg">
-            <h3 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-1.5"><IconPlus size={15} /> Schedule trip</h3>
-            <form onSubmit={handleAddTrip} className="space-y-3">
-              <Select options={routeOpts} value={ntRoute} onChange={setNtRoute} label="Route" placeholder="Select route" required />
-              <Select options={busOpts} value={ntBus} onChange={setNtBus} label="Bus" placeholder="Select bus" required />
-              <DatePicker value={ntDate} onChange={setNtDate} min={today} label="Date" required />
-              <div className="grid grid-cols-2 gap-2">
-                <div><label htmlFor="trip-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="trip-departure" type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required title="Trip departure time" aria-label="Trip departure time" /></div>
-                <div><label htmlFor="trip-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="trip-arrival" type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required title="Trip arrival time" aria-label="Trip arrival time" /></div>
+          <div className="bg-white rounded-xl border border-border p-6">
+            <div className="max-w-4xl">
+              <h3 className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-1.5"><IconPlus size={15} /> Schedule trip</h3>
+              <p className="text-[11px] text-gray-400 mb-5">Create a one-time trip that should appear immediately in your active trip list and in public search for approved companies.</p>
+            </div>
+            <form onSubmit={handleAddTrip} className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_320px]">
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-border p-4">
+                  <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Trip details</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Select options={routeOpts} value={ntRoute} onChange={setNtRoute} label="Route" placeholder="Select route" required />
+                    <Select options={busOpts} value={ntBus} onChange={setNtBus} label="Bus" placeholder="Select bus" required />
+                    <DatePicker value={ntDate} onChange={setNtDate} min={today} label="Date" required />
+                    <div />
+                    <div><label htmlFor="trip-departure" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Departure</label><input id="trip-departure" type="time" value={ntDep} onChange={e => setNtDep(e.target.value)} className={field} required title="Trip departure time" aria-label="Trip departure time" /></div>
+                    <div><label htmlFor="trip-arrival" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Arrival</label><input id="trip-arrival" type="time" value={ntArr} onChange={e => setNtArr(e.target.value)} className={field} required title="Trip arrival time" aria-label="Trip arrival time" /></div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border p-4">
+                  <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Selling rules</h4>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="trip-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
+                      <input id="trip-price" type="text" inputMode="numeric" value={ntPrice} onChange={e => setNtPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Trip price" aria-label="Trip price" />
+                      <p className="text-[10px] text-gray-400 mt-1">Accepts whole RWF values like 3500 or 3,500.</p>
+                    </div>
+                    <div>
+                      <label htmlFor="trip-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Online seats</label>
+                      <input
+                        id="trip-online-seats"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={ntOnlineSeats}
+                        onChange={e => setNtOnlineSeats(e.target.value)}
+                        placeholder="Seats available to book online"
+                        className={field}
+                        required
+                        title="Online seats"
+                        aria-label="Online seats"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        Physical capacity: {selectedTripBus?.totalSeats ?? '—'} seats total
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Schedule trip</button>
               </div>
-              <div>
-                <label htmlFor="trip-price" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Price (RWF)</label>
-                <input id="trip-price" type="text" inputMode="numeric" value={ntPrice} onChange={e => setNtPrice(sanitizeRwfAmountInput(e.target.value))} placeholder="3500 or 3,500" className={field} required title="Trip price" aria-label="Trip price" />
-                <p className="text-[10px] text-gray-400 mt-1">Accepts whole RWF values like 3500 or 3,500.</p>
+
+              <div className="rounded-2xl border border-border bg-surface-secondary/70 p-4 h-fit">
+                <h4 className="text-[12px] font-semibold text-gray-900 mb-3">Trip summary</h4>
+                <div className="space-y-2 text-[11px] text-gray-600">
+                  <div><span className="font-semibold text-gray-900">Route:</span> {selectedTripRoute ? `${selectedTripRoute.origin} → ${selectedTripRoute.destination}` : 'Select a route'}</div>
+                  <div><span className="font-semibold text-gray-900">Duration:</span> {selectedTripRoute?.duration || 'Select a route to view duration'}</div>
+                  <div><span className="font-semibold text-gray-900">Bus:</span> {selectedTripBus ? `${selectedTripBus.name} (${selectedTripBus.plateNumber})` : 'Select a bus'}</div>
+                  <div><span className="font-semibold text-gray-900">Capacity:</span> {ntOnlineSeats || '0'} online seats from {selectedTripBus?.totalSeats ?? '—'} total seats</div>
+                  <div><span className="font-semibold text-gray-900">Travel date:</span> {ntDate || 'Choose a date'}</div>
+                </div>
               </div>
-              <div>
-  <label htmlFor="trip-online-seats" className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">
-    Online seats
-  </label>
-  <input
-    id="trip-online-seats"
-    type="number"
-    min="1"
-    step="1"
-    value={ntOnlineSeats}
-    onChange={e => setNtOnlineSeats(e.target.value)}
-    placeholder="Seats available to book online"
-    className={field}
-    required
-    title="Online seats"
-    aria-label="Online seats"
-  />
-  <p className="text-[10px] text-gray-400 mt-1">
-    Physical capacity: {buses.find(b => b.id === ntBus)?.totalSeats ?? '—'} seats total
-  </p>
-</div>
-              <button type="submit" className="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-xs font-semibold hover:bg-primary-700 transition-all">Schedule trip</button>
             </form>
           </div>
         )}

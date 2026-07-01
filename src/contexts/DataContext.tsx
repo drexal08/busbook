@@ -44,7 +44,7 @@ interface DataContextType {
     data: Partial<Omit<TripTemplate, 'id' | 'companyId' | 'createdAt'>>
   ) => Promise<void>;
   deleteTripTemplate: (templateId: string) => Promise<void>;
-  generateUpcomingTrips: (companyId: string) => Promise<{ created: number }>;
+  generateUpcomingTrips: (companyId: string, templatesOverride?: TripTemplate[]) => Promise<{ created: number }>;
   validateTicket: (qrCode: string) => Promise<{ valid: boolean; booking?: Booking; message?: string; error?: string }>;
   getPassengerBookings: (passengerId: string) => Booking[];
   getCompanyTrips: (companyId: string) => Trip[];
@@ -302,13 +302,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTripTemplates(prev => prev.filter(t => t.id !== templateId));
   }, []);
 
-  const generateUpcomingTrips = useCallback(async (companyId: string) => {
-    const templates = tripTemplates.filter(t => t.companyId === companyId && t.active);
+  const generateUpcomingTrips = useCallback(async (companyId: string, templatesOverride?: TripTemplate[]) => {
+    const scopedTemplates = templatesOverride ?? tripTemplates;
+    const templates = scopedTemplates.filter(t => t.companyId === companyId && t.active);
     const result = await ensureUpcomingTripsFromTemplates(templates);
-    if (result.created > 0) {
-      const t = await fetchTrips({ companyId });
-      setTrips(prev => [...prev.filter(x => x.companyId !== companyId), ...t]);
-    }
+    const t = await fetchTrips({ companyId });
+    setTrips(prev => [...prev.filter(x => x.companyId !== companyId), ...t]);
     return result;
   }, [tripTemplates]);
 

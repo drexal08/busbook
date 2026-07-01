@@ -2,6 +2,7 @@ import { API_ENDPOINTS } from './constants';
 import { toAuthError, AuthError, AuthErrorType } from './errors';
 import { logger } from '../logger';
 import { analytics } from '../analytics';
+import { getRecaptchaToken } from './recaptcha';
 
 function jsonOrThrow(res: Response) {
   return res.json().catch(() => {
@@ -14,10 +15,11 @@ export async function sendEmailOtp(email: string) {
   analytics.trackEmailOtpRequested(email);
   
   try {
+    const recaptchaToken = await getRecaptchaToken('send_email_otp');
     const res = await fetch(API_ENDPOINTS.SEND_EMAIL_OTP, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, recaptchaToken: recaptchaToken || undefined }),
     });
 
     // Check if response is ok before parsing JSON
@@ -66,10 +68,11 @@ export async function verifyEmailOtp(email: string, code: string) {
   logger.logApiCall('POST', API_ENDPOINTS.VERIFY_EMAIL_OTP, { email });
   
   try {
+    const recaptchaToken = await getRecaptchaToken('verify_email_otp');
     const res = await fetch(API_ENDPOINTS.VERIFY_EMAIL_OTP, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ email, code }),
+      body: JSON.stringify({ email, code, recaptchaToken: recaptchaToken || undefined }),
     });
 
     // Check if response is ok before parsing JSON

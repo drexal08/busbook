@@ -8,6 +8,9 @@
  */
 
 const requiredEnvVars = {
+  // Frontend Configuration
+  'VITE_RECAPTCHA_SITE_KEY': { required: false, description: 'reCAPTCHA site key for browser verification' },
+
   // Firebase Configuration
   'FIREBASE_PROJECT_ID': { required: true, description: 'Firebase Project ID' },
   'FIREBASE_CLIENT_EMAIL': { required: true, description: 'Firebase Service Account Client Email' },

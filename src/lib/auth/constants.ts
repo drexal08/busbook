@@ -9,6 +9,7 @@ export const RECAPTCHA_CONFIG = {
   TIMEOUT: 60000,
   SIZE: 'invisible' as const,
   BADGE: 'bottomright' as const,
+  SITE_KEY: import.meta.env.VITE_RECAPTCHA_SITE_KEY || '',
 } as const;
 
 export const VERIFICATION_CONFIG = {

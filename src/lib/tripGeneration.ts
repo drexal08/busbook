@@ -30,6 +30,69 @@ export function deterministicTripId(templateId: string, date: string) {
   return `${templateId}_${date}`;
 }
 
+function deterministicIntervalTripId(templateId: string, date: string, departureTime: string) {
+  return `${templateId}_${date}_${departureTime.replace(':', '')}`;
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+  return hours * 60 + minutes;
+}
+
+function minutesToTime(totalMinutes: number) {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${pad2(hours)}:${pad2(minutes)}`;
+}
+
+function getTripDurationMinutes(template: TripTemplate) {
+  const departureMinutes = timeToMinutes(template.departureTime);
+  const arrivalMinutes = timeToMinutes(template.arrivalTime);
+  if (departureMinutes === null || arrivalMinutes === null) {
+    return 0;
+  }
+  const rawDuration = arrivalMinutes - departureMinutes;
+  return rawDuration >= 0 ? rawDuration : rawDuration + 1440;
+}
+
+async function createTemplateTrip(
+  template: TripTemplate,
+  date: string,
+  departureTime: string,
+  arrivalTime: string,
+  tripId: string
+) {
+  const tripRef = doc(db, 'trips', tripId);
+  const existing = await getDoc(tripRef);
+  if (existing.exists()) {
+    return false;
+  }
+
+  const trip: Omit<Trip, 'id'> = {
+    routeId: template.routeId,
+    companyId: template.companyId,
+    busId: template.busId,
+    date,
+    departureTime,
+    arrivalTime,
+    price: template.price,
+    onlineSeats: template.onlineSeats,
+    totalSeats: template.totalSeats,
+    bookedSeats: [],
+    availableSeats: template.onlineSeats,
+    status: 'scheduled',
+    templateId: template.id,
+    source: 'template',
+  };
+
+  await setDoc(tripRef, { ...trip, createdAt: serverTimestamp() });
+  return true;
+}
+
 export async function ensureUpcomingTripsFromTemplates(
   templates: TripTemplate[]
 ): Promise<{ created: number }> {
@@ -41,6 +104,44 @@ export async function ensureUpcomingTripsFromTemplates(
     if (!t.active) continue;
     const horizon = Number.isFinite(t.sellDaysAhead) ? Math.max(1, Math.min(30, t.sellDaysAhead)) : 7;
     const daysOfWeek = Array.isArray(t.daysOfWeek) ? t.daysOfWeek : [];
+    const recurrenceMode = t.recurrenceMode || 'weekly';
+
+    if (recurrenceMode === 'interval') {
+      const intervalValue = Number.isFinite(t.intervalValue) ? Math.max(1, t.intervalValue ?? 1) : 1;
+      const intervalMinutes = intervalValue * ((t.intervalUnit || 'hours') === 'hours' ? 60 : 1);
+      const startDate = t.startDate || dateStringFromUtcMs(startMs);
+      const [year, month, day] = startDate.split('-').map(Number);
+      const departureMinutes = timeToMinutes(t.departureTime);
+      const durationMinutes = getTripDurationMinutes(t);
+      if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day) || departureMinutes === null) {
+        continue;
+      }
+
+      const firstDepartureMs = Date.UTC(year, month - 1, day, Math.floor(departureMinutes / 60), departureMinutes % 60);
+      const windowStartMs = startMs;
+      const windowEndMs = startMs + horizon * 24 * 60 * 60 * 1000;
+      let occurrenceMs = firstDepartureMs;
+
+      if (occurrenceMs < windowStartMs) {
+        const missedOccurrences = Math.ceil((windowStartMs - occurrenceMs) / (intervalMinutes * 60 * 1000));
+        occurrenceMs += missedOccurrences * intervalMinutes * 60 * 1000;
+      }
+
+      while (occurrenceMs < windowEndMs) {
+        const departureDateTime = new Date(occurrenceMs);
+        const arrivalDateTime = new Date(occurrenceMs + durationMinutes * 60 * 1000);
+        const departureDate = dateStringFromUtcMs(occurrenceMs);
+        const departureTime = minutesToTime(departureDateTime.getUTCHours() * 60 + departureDateTime.getUTCMinutes());
+        const arrivalTime = minutesToTime(arrivalDateTime.getUTCHours() * 60 + arrivalDateTime.getUTCMinutes());
+        const tripId = deterministicIntervalTripId(t.id, departureDate, departureTime);
+        if (await createTemplateTrip(t, departureDate, departureTime, arrivalTime, tripId)) {
+          created += 1;
+        }
+        occurrenceMs += intervalMinutes * 60 * 1000;
+      }
+
+      continue;
+    }
 
     for (let i = 0; i < horizon; i++) {
       const dayMs = startMs + i * 24 * 60 * 60 * 1000;
@@ -49,29 +150,9 @@ export async function ensureUpcomingTripsFromTemplates(
 
       const date = dateStringFromUtcMs(dayMs);
       const tripId = deterministicTripId(t.id, date);
-      const tripRef = doc(db, 'trips', tripId);
-      const existing = await getDoc(tripRef);
-      if (existing.exists()) continue;
-
-      const trip: Omit<Trip, 'id'> = {
-        routeId: t.routeId,
-        companyId: t.companyId,
-        busId: t.busId,
-        date,
-        departureTime: t.departureTime,
-        arrivalTime: t.arrivalTime,
-        price: t.price,
-        onlineSeats: t.onlineSeats,
-        totalSeats: t.totalSeats,
-        bookedSeats: [],
-        availableSeats: t.onlineSeats,
-        status: 'scheduled',
-        templateId: t.id,
-        source: 'template',
-      };
-
-      await setDoc(tripRef, { ...trip, createdAt: serverTimestamp() });
-      created += 1;
+      if (await createTemplateTrip(t, date, t.departureTime, t.arrivalTime, tripId)) {
+        created += 1;
+      }
     }
   }
 
