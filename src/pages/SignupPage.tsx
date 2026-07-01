@@ -13,6 +13,11 @@ import {
   sendEmailOtp,
   verifyEmailOtp,
 } from '../lib/verification';
+import {
+  normalizePhoneInput,
+  toRwandaE164Phone,
+  validateSupportedPhone,
+} from '../lib/phone';
 import { getPostAuthPath } from '../lib/userRoutes';
 import { signupReducer, initialState } from '../lib/auth/signupReducer';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES, VERIFICATION_CONFIG } from '../lib/auth/constants';
@@ -38,9 +43,11 @@ const SignupPage: React.FC = () => {
   }, [state.countdown]);
 
   const normalizedEmail = state.email.trim().toLowerCase();
-  const normalizedPhone = state.phone.trim().replace(/\s+/g, '');
+  const normalizedPhone = normalizePhoneInput(state.phone.trim());
+  const canonicalPhone = toRwandaE164Phone(normalizedPhone);
   const emailOtpVerified = !!normalizedEmail && state.emailOtpVerifiedFor === normalizedEmail;
-  const phoneOtpVerified = !!normalizedPhone && state.phoneOtpVerifiedFor === normalizedPhone;
+  const phoneOtpVerified = !!canonicalPhone && state.phoneOtpVerifiedFor === canonicalPhone;
+  const phoneValidationError = normalizedPhone ? validateSupportedPhone(normalizedPhone) : '';
 
   const socialOptions = useMemo(
     () => [
@@ -113,15 +120,19 @@ const SignupPage: React.FC = () => {
   };
 
   const handleSendPhoneOtp = async () => {
-    if (!normalizedPhone) {
-      dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.PHONE_REQUIRED });
+    const phoneError = validateSupportedPhone(normalizedPhone);
+    if (phoneError) {
+      dispatch({
+        type: 'SET_ERROR',
+        error: !normalizedPhone ? ERROR_MESSAGES.PHONE_REQUIRED : phoneError,
+      });
       return;
     }
 
     try {
       dispatch({ type: 'START_SENDING_PHONE_OTP' });
       resetVerificationMessages();
-      const session = await requestSignupPhoneOtp(normalizedPhone, 'signup-phone-recaptcha');
+      const session = await requestSignupPhoneOtp(canonicalPhone, 'signup-phone-recaptcha');
       dispatch({ type: 'SET_PHONE_OTP_SESSION', session });
       dispatch({ type: 'CLEAR_PHONE_OTP_VERIFIED' });
       dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.PHONE_OTP_SENT });
@@ -143,7 +154,7 @@ const SignupPage: React.FC = () => {
       dispatch({ type: 'START_VERIFYING_PHONE_OTP' });
       resetVerificationMessages();
       await confirmSignupPhoneOtp(state.phoneOtpSession, state.phoneOtp.trim());
-      dispatch({ type: 'SET_PHONE_OTP_VERIFIED', phone: normalizedPhone });
+      dispatch({ type: 'SET_PHONE_OTP_VERIFIED', phone: canonicalPhone });
       dispatch({ type: 'SET_PHONE_OTP_SESSION', session: null });
       dispatch({ type: 'SET_VERIFICATION_NOTICE', notice: SUCCESS_MESSAGES.PHONE_OTP_VERIFIED });
     } catch (e) {
@@ -177,12 +188,16 @@ const SignupPage: React.FC = () => {
       return;
     }
 
-    // Validate phone number
-    const cleanPhone = normalizedPhone;
-    if (!/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(cleanPhone)) {
-      dispatch({ type: 'SET_ERROR', error: 'Invalid phone number. Must start with 078, 079, 073, 072 or +250' });
+    const phoneError = validateSupportedPhone(normalizedPhone);
+    if (phoneError) {
+      dispatch({
+        type: 'SET_ERROR',
+        error: !normalizedPhone ? ERROR_MESSAGES.PHONE_REQUIRED : phoneError,
+      });
       return;
     }
+
+    const storedPhone = canonicalPhone || normalizedPhone;
 
     if (state.role === 'company' && !state.companyName.trim()) {
       dispatch({ type: 'SET_ERROR', error: ERROR_MESSAGES.COMPANY_NAME_REQUIRED });
@@ -213,7 +228,7 @@ const SignupPage: React.FC = () => {
       dispatch({ type: 'START_SUBMITTING' });
       const companyId = `comp-${Date.now()}`;
       try {
-        const result = await signup(state.name, state.email, state.password, state.phone, state.role, companyId, {
+        const result = await signup(state.name, state.email, state.password, storedPhone, state.role, companyId, {
           emailOtpVerified,
           phoneVerified: phoneOtpVerified,
         });
@@ -229,7 +244,7 @@ const SignupPage: React.FC = () => {
             ownerId: result.userId,
             description: state.companyDescription || 'New bus company',
             status: 'pending',
-            phone: state.phone,
+            phone: storedPhone,
             email: state.email,
             createdAt: new Date().toISOString().split('T')[0],
           });
@@ -252,7 +267,7 @@ const SignupPage: React.FC = () => {
     if (state.role === 'operator') {
       dispatch({ type: 'START_SUBMITTING' });
       try {
-        const result = await signup(state.name, state.email, state.password, state.phone, state.role, state.companyCode.trim(), {
+        const result = await signup(state.name, state.email, state.password, storedPhone, state.role, state.companyCode.trim(), {
           emailOtpVerified,
           phoneVerified: phoneOtpVerified,
         });
@@ -270,7 +285,7 @@ const SignupPage: React.FC = () => {
 
     dispatch({ type: 'START_SUBMITTING' });
     try {
-      const result = await signup(state.name, state.email, state.password, state.phone, state.role, undefined, {
+      const result = await signup(state.name, state.email, state.password, storedPhone, state.role, undefined, {
         emailOtpVerified,
         phoneVerified: phoneOtpVerified,
       });
@@ -400,14 +415,10 @@ const SignupPage: React.FC = () => {
             <div>
               <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 block">Phone</label>
               <input type="tel" value={state.phone} onChange={(e) => {
-                const value = e.target.value.replace(/\s+/g, '');
-                // Allow only digits and + sign
-                if (/^[0+]*$/.test(value)) {
-                  dispatch({ type: 'SET_FIELD', field: 'phone', value });
-                }
+                dispatch({ type: 'SET_FIELD', field: 'phone', value: normalizePhoneInput(e.target.value) });
               }} placeholder="0781234567 or +250788123456" className={fieldClasses} required />
-              {state.phone && !/^(\+250)?(07[2389]|2507[2389])\d{7}$/.test(state.phone.replace(/\s+/g, '')) && (
-                <p className="text-[10px] text-red-500 mt-1">Must start with 078, 079, 073, 072 or +250</p>
+              {phoneValidationError && (
+                <p className="text-[10px] text-red-500 mt-1">{phoneValidationError}</p>
               )}
             </div>
 
